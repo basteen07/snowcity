@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Snowman Loader</title>
+<style>
+  body {
+    background: radial-gradient(circle at center, #e9f5ff, #cde7ff, #a8d8ff);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  .loader {
+    position: relative;
+    width: 160px;
+    height: 160px;
+  }
+
+  /* Rotating snowflakes layer */
+  .snowflakes {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    animation: rotateSnow 4s linear infinite;
+  }
+
+  .flake {
+    fill: #cce9ff;
+    opacity: 0.9;
+    filter: drop-shadow(0 0 6px #b9e3ff);
+    animation: flicker 2s ease-in-out infinite alternate;
+  }
+
+  /* Snowman bounce */
+  .snowman {
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    animation: bounce 2.5s ease-in-out infinite;
+  }
+
+  /* Loading text glow */
+  .loading-text {
+    text-align: center;
+    font-family: 'Poppins', sans-serif;
+    color: #004080;
+    font-weight: 600;
+    letter-spacing: 2px;
+    margin-top: 200px;
+    text-shadow: 0 0 5px #b9e3ff, 0 0 10px #b9e3ff;
+    animation: pulseText 2s infinite ease-in-out;
+  }
+
+  @keyframes rotateSnow {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+
+  @keyframes bounce {
+    0%, 100% { transform: translate(-50%, 0); }
+    50% { transform: translate(-50%, -12px); }
+  }
+
+  @keyframes flicker {
+    0% { opacity: 0.8; transform: scale(1); }
+    100% { opacity: 1; transform: scale(1.2); }
+  }
+
+  @keyframes pulseText {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+  }
+</style>
+</head>
+<body>
+
+<div class="loader">
+  <!-- Snowflakes -->
+  <svg class="snowflakes" viewBox="0 0 100 100">
+    <circle class="flake" cx="10" cy="10" r="3"/>
+    <circle class="flake" cx="90" cy="20" r="2.5"/>
+    <circle class="flake" cx="30" cy="90" r="2"/>
+    <circle class="flake" cx="70" cy="80" r="3"/>
+    <circle class="flake" cx="50" cy="10" r="2.5"/>
+    <circle class="flake" cx="20" cy="60" r="3"/>
+  </svg>
+
+  <!-- Snowman -->
+  <svg class="snowman" width="100" height="130" viewBox="0 0 100 130">
+    <!-- Base -->
+    <circle cx="50" cy="100" r="25" fill="white" stroke="#cce3ff" stroke-width="2"/>
+    <!-- Middle -->
+    <circle cx="50" cy="60" r="18" fill="white" stroke="#cce3ff" stroke-width="2"/>
+    <!-- Head -->
+    <circle cx="50" cy="30" r="12" fill="white" stroke="#cce3ff" stroke-width="2"/>
+    <!-- Eyes -->
+    <circle cx="46" cy="28" r="1.5" fill="#000"/>
+    <circle cx="54" cy="28" r="1.5" fill="#000"/>
+    <!-- Nose -->
+    <polygon points="50,30 65,32 50,34" fill="#ff8c00"/>
+    <!-- Buttons -->
+    <circle cx="50" cy="55" r="2" fill="#e24c4b"/>
+    <circle cx="50" cy="65" r="2" fill="#e24c4b"/>
+    <circle cx="50" cy="75" r="2" fill="#e24c4b"/>
+    <!-- Hat -->
+    <rect x="40" y="13" width="20" height="5" fill="#002244"/>
+    <rect x="43" y="5" width="14" height="10" fill="#001a33"/>
+    <rect x="43" y="10" width="14" height="3" fill="#e94b35"/>
+    <!-- Scarf -->
+    <path d="M38,38 Q50,35 62,38 L60,42 Q50,45 40,42Z" fill="#1b78c0"/>
+    <rect x="48" y="42" width="5" height="10" fill="#1b78c0"/>
+  </svg>
+</div>
+
+<div class="loading-text">Loading Winter Magic...</div>
+
+</body>
+</html>

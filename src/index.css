@@ -1,0 +1,135 @@
+@import "./styles/tailwind.css";
+
+/* Global */
+html, body, #root {
+  height: 100%;
+}
+body {
+  @apply font-sans antialiased;
+}
+
+@keyframes kenburns {
+  0% { transform: scale(1) translateY(0); }
+  50% { transform: scale(1.1) translateY(-10px); }
+  100% { transform: scale(1) translateY(0); }
+}
+.animate-kenburns {
+  animation: kenburns 10s ease-in-out infinite;
+}
+
+@keyframes fadeUp {
+  0% { opacity: 0; transform: translateY(30px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-up {
+  animation: fadeUp 1.5s ease forwards;
+}
+
+@keyframes swing {
+  0% {
+    transform: rotate(0deg);
+  }
+  25% {
+    transform: rotate(10deg);
+  }
+  50% {
+    transform: rotate(0deg);
+  }
+  75% {
+    transform: rotate(-10deg);
+  }
+  100% {
+    transform: rotate(0deg);
+  }
+}
+
+.animate-swing {
+  animation: swing 2s ease-in-out infinite;
+  transform-origin: bottom center;
+}
+
+
+
+
+/* Smooth dropdown animation */
+.dropdown-menu {
+  position: absolute;
+  left: 0;
+  top: 100%;
+  margin-top: 0.5rem;
+  width: 15rem;
+  border-radius: 0.75rem;
+  border: 1px solid #e5e7eb;
+  background: white;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+  padding: 0.5rem;
+  z-index: 50;
+  transition: all 0.3s ease-in-out;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-10px);
+}
+
+.group:hover > .dropdown-menu {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+/* Submenu (nested dropdowns) */
+.submenu {
+  position: absolute;
+  left: 100%;
+  top: 0;
+  margin-left: 0.25rem;
+  width: 13rem;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+  padding: 0.5rem;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateX(-10px);
+  transition: all 0.3s ease-in-out;
+}
+
+.has-submenu:hover > .submenu {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(0);
+}
+
+
+
+
+
+/* Snowfall effect */
+@keyframes snow {
+  0% {
+    transform: translateY(-10px);
+  }
+  100% {
+    transform: translateY(100vh);
+  }
+}
+
+.snowfall::before,
+.snowfall::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 200%;
+  height: 200%;
+  background-image: radial-gradient(white 1px, transparent 1px);
+  background-size: 20px 20px;
+  animation: snow 10s linear infinite;
+  opacity: 0.5;
+}
+
+.snowfall::after {
+  animation-duration: 15s;
+  opacity: 0.3;
+  background-size: 15px 15px;
+}

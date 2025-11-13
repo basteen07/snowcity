@@ -1,0 +1,1 @@
+export const getAttrId = (a) => a?.id ?? a?._id ?? a?.attraction_id ?? null;
