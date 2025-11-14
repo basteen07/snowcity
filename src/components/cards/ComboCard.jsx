@@ -95,6 +95,8 @@ export default function ComboCard({ item }) {
                   alt={attr.title}
                   className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
                   loading="lazy"
+                  decoding="async"
+                  sizes="(min-width: 768px) 25vw, 50vw"
                 />
                 <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent p-3">
                   <p className="text-[10px] uppercase tracking-wide text-gray-200">

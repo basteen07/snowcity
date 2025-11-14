@@ -14,8 +14,10 @@ export default function Footer() {
                 src={Logo}
                 alt="SnowCity"
                 className="h-9 w-auto object-contain"
+                width={510}
+                height={135}
+                decoding="async"
               />
-             
             </div>
             <p className="text-sm text-gray-400">
               Experience the magic of snow and fun in the city’s coolest

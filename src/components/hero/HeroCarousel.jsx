@@ -99,6 +99,9 @@ export default function HeroCarousel({ banners = [] }) {
                       alt={title || "Banner"}
                       className="w-full h-full object-cover object-center will-change-transform animate-kenburns brightness-110 contrast-110 saturate-115"
                       loading={idx === 0 ? "eager" : "lazy"}
+                      fetchpriority={idx === 0 ? "high" : "auto"}
+                      decoding="async"
+                      sizes="100vw"
                       draggable="false"
                     />
                   </picture>
@@ -142,15 +145,7 @@ export default function HeroCarousel({ banners = [] }) {
       </Swiper>
 
       {/* Ken Burns + extra styles */}
-      <style>{`
-        @keyframes kenburns {
-          0%   { transform: scale(1) translate3d(0,0,0); }
-          100% { transform: scale(1.08) translate3d(0,0,0); }
-        }
-        .animate-kenburns {
-          animation: kenburns 14s ease-in-out infinite alternate;
-        }
-      `}</style>
+     
     </section>
   );
 }

@@ -1,6 +1,13 @@
 import React from 'react';
 
-export default function LazyVisible({ rootMargin = '200px', once = true, children }) {
+export default function LazyVisible({
+  rootMargin = '200px',
+  once = true,
+  minHeight = 0,
+  placeholder = null,
+  className = '',
+  children
+}) {
   const ref = React.useRef(null);
   const [visible, setVisible] = React.useState(false);
 
@@ -22,5 +29,10 @@ export default function LazyVisible({ rootMargin = '200px', once = true, childre
     return () => obs && obs.disconnect();
   }, [visible, rootMargin, once]);
 
-  return <div ref={ref}>{visible ? children : null}</div>;
+  const style = minHeight ? { minHeight } : undefined;
+  return (
+    <div ref={ref} className={className} style={style}>
+      {visible ? children : placeholder}
+    </div>
+  );
 }

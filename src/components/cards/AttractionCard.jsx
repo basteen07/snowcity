@@ -12,7 +12,14 @@ export default function AttractionCard({ item }) {
   return (
     <div className="bg-white rounded-xl shadow hover:shadow-md transition overflow-hidden border">
       <div className="relative aspect-[4/3] w-full overflow-hidden">
-        <img src={img} alt={title} className="w-full h-full object-cover" loading="lazy" />
+        <img
+          src={img}
+          alt={title}
+          className="w-full h-full object-cover"
+          loading="lazy"
+          decoding="async"
+          sizes="(min-width: 768px) 33vw, 50vw"
+        />
         {basePrice > 0 ? (
           <div className="absolute top-2 left-2 rounded-full bg-black/70 text-white px-3 py-1 text-xs md:text-sm">
             <span className="font-semibold">₹{Math.round(basePrice)}</span>

@@ -1,33 +1,28 @@
 /** @type {import('tailwindcss').Config} */
-export default {
+module.exports = {
   darkMode: 'class',
   content: [
     './index.html',
     './src/**/*.{js,jsx}'
   ],
   // tailwind.config.js
-theme: {
-  extend: {
-    keyframes: {
-      kenburns: {
-        '0%': { transform: 'scale(1) translateY(0)' },
-        '50%': { transform: 'scale(1.1) translateY(-10px)' },
-        '100%': { transform: 'scale(1) translateY(0)' },
-      },
-      fadeUp: {
-        '0%': { opacity: '0', transform: 'translateY(30px)' },
-        '100%': { opacity: '1', transform: 'translateY(0)' },
-      },
-    },
-    animation: {
-      kenburns: 'kenburns 10s ease-in-out infinite',
-      'fade-up': 'fadeUp 1.5s ease forwards',
-    },
-  },
-},
-
   theme: {
     extend: {
+      keyframes: {
+        kenburns: {
+          '0%': { transform: 'scale(1) translateY(0)' },
+          '50%': { transform: 'scale(1.1) translateY(-10px)' },
+          '100%': { transform: 'scale(1) translateY(0)' },
+        },
+        fadeUp: {
+          '0%': { opacity: '0', transform: 'translateY(30px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' },
+        },
+      },
+      animation: {
+        kenburns: 'kenburns 10s ease-in-out infinite',
+        'fade-up': 'fadeUp 1.5s ease forwards',
+      },
       fontFamily: {
         // Global app font stack (DM Sans preferred, Poppins secondary)
         sans: [

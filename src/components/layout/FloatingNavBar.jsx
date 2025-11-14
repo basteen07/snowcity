@@ -74,7 +74,7 @@ export default function FloatingNavBar() {
           <div className="hidden md:flex items-center justify-between px-5 h-14">
             {/* Left: logo */}
             <Link to="/" className="flex items-center gap-2">
-              <img src={Logo} alt="SnowCity Logo" className="h-8 w-auto object-contain" />
+              <img src={Logo} alt="SnowCity Logo" className="h-8 w-auto object-contain" width={510} height={135} decoding="async" />
             </Link>
 
             {/* Right: full menu */}
@@ -270,7 +270,7 @@ export default function FloatingNavBar() {
 
             {/* Center: logo */}
             <Link to="/" className="flex items-center gap-2">
-              <img src={Logo} alt="SnowCity Logo" className="h-8 w-auto object-contain" />
+              <img src={Logo} alt="SnowCity Logo" className="h-8 w-auto object-contain" width={510} height={135} decoding="async" />
             </Link>
 
             {/* Right: profile (no sign in on mobile) */}

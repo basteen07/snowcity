@@ -133,3 +133,13 @@ body {
   opacity: 0.3;
   background-size: 15px 15px;
 }
+
+/* Reduce motion on mobile and when user prefers reduced motion */
+@media (max-width: 768px), (prefers-reduced-motion: reduce) {
+  .snowfall,
+  .snowleaves,
+  .snowfall-light,
+  .animate-kenburns {
+    animation: none !important;
+  }
+}

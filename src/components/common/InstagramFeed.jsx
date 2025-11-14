@@ -15,6 +15,9 @@ export default function InstagramFeed() {
               alt="Instagram"
               className="rounded-lg object-cover w-full h-24 md:h-32"
               loading="lazy"
+              width={400}
+              height={400}
+              decoding="async"
             />
           ))}
         </div>

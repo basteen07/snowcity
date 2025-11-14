@@ -10,7 +10,14 @@ export default function BlogCard({ item }) {
   return (
     <div className="bg-white rounded-xl shadow hover:shadow-md transition overflow-hidden border">
       <div className="aspect-[4/3]">
-        <img src={img} alt={title} className="w-full h-full object-cover" loading="lazy" />
+        <img
+          src={img}
+          alt={title}
+          className="w-full h-full object-cover"
+          loading="lazy"
+          decoding="async"
+          sizes="(min-width: 768px) 33vw, 100vw"
+        />
       </div>
       <div className="p-4">
         <h3 className="font-semibold text-gray-800 line-clamp-2">{title}</h3>

@@ -129,7 +129,7 @@ export default function Home() {
       )}
 
       {/* Attractions (lazy mount, cached fallback) */}
-      <LazyVisible>
+      <LazyVisible minHeight={420} placeholder={<div className="py-10"><Loader /></div>}>
         {attractions.status === 'failed' ? (
           <ErrorState message={attractions.error?.message || 'Failed to load attractions'} />
         ) : attractionItems.length ? (
@@ -140,22 +140,22 @@ export default function Home() {
       </LazyVisible>
 
       {/* Offers + Combos (lazy mount) */}
-      <LazyVisible>
+      <LazyVisible minHeight={420} placeholder={<div className="py-10"><Loader /></div>}>
         <OffersCarousel offers={offerItems} combos={comboItems} />
       </LazyVisible>
 
       {/* Scrolling Marquee (lazy) */}
-      <LazyVisible>
+      {/* <LazyVisible minHeight={60}>
         {marqueeItems.length ? <Marquee items={marqueeItems} /> : null}
-      </LazyVisible>
+      </LazyVisible> */}
 
       {/* Testimonials (lazy) */}
-      <LazyVisible>
+      <LazyVisible minHeight={320} placeholder={<div className="py-8" /> }>
         <Testimonials />
       </LazyVisible>
 
       {/* Gallery (lazy, cached fallback) */}
-      <LazyVisible>
+      <LazyVisible minHeight={420} placeholder={<div className="py-10"><Loader /></div>}>
         <section className="py-10">
           <div className="max-w-6xl mx-auto px-4">
             <div className="flex items-end justify-between mb-4">
@@ -191,17 +191,17 @@ export default function Home() {
       </LazyVisible>
 
       {/* Video Block (lazy) */}
-      <LazyVisible>
+      <LazyVisible minHeight={360} placeholder={<div className="aspect-video w-full max-w-6xl mx-auto px-4 rounded-2xl bg-gray-200" /> }>
         <VideoBlock />
       </LazyVisible>
 
       {/* Recent Blogs (lazy, cached fallback) */}
-      <LazyVisible>
+      <LazyVisible minHeight={420} placeholder={<div className="py-10"><Loader /></div>}>
         <section className="py-10 bg-gray-50">
           <div className="max-w-6xl mx-auto px-4">
             <div className="flex items-end justify-between mb-4">
               <h2 className="text-xl md:text-2xl font-semibold">From the blog</h2>
-              <Link to="/blogs" className="text-sm text-blue-600 hover:underline">View all</Link>
+              <Link to="/blogs" className="text-sm text-blue-600 hover:underline">View all blogs</Link>
             </div>
             {blogs.status === 'failed' ? (
               <ErrorState message={blogs.error?.message || 'Failed to load blogs'} />
@@ -219,7 +219,7 @@ export default function Home() {
       </LazyVisible>
 
       {/* Instagram (lazy) */}
-      <LazyVisible>
+      <LazyVisible minHeight={240} placeholder={<div className="py-6" /> }>
         <InstagramFeed />
       </LazyVisible>
     </div>

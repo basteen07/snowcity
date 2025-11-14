@@ -68,7 +68,7 @@ export default function AttractionsCarousel({ items = [] }) {
           </div>
           <div className="mt-3">
             <Link to="/attractions" className="text-sm text-blue-600 hover:underline">
-              View all →
+              View all attractions →
             </Link>
           </div>
         </div>
@@ -91,44 +91,7 @@ export default function AttractionsCarousel({ items = [] }) {
       </div>
 
       {/* Animations */}
-      <style>{`
-        .snowfall {
-          --c1: rgba(255,255,255,0.9);
-          --c2: rgba(255,255,255,0.65);
-          --c3: rgba(255,255,255,0.45);
-          background-image:
-            radial-gradient(2px 2px at 20px 30px, var(--c1), transparent),
-            radial-gradient(3px 3px at 120px 180px, var(--c2), transparent),
-            radial-gradient(2px 2px at 240px 90px, var(--c3), transparent),
-            radial-gradient(2px 2px at 360px 140px, var(--c2), transparent),
-            radial-gradient(3px 3px at 300px 20px, var(--c1), transparent),
-            radial-gradient(2px 2px at 160px 110px, var(--c3), transparent);
-          background-size: 420px 420px;
-          animation: snowFall 22s linear infinite;
-          opacity: 0.55;
-        }
-        .snowleaves {
-          --l1: rgba(255,255,255,0.32);
-          --l2: rgba(255,255,255,0.24);
-          --l3: rgba(255,255,255,0.16);
-          background-image:
-            radial-gradient(6px 6px at 60px 80px, var(--l1), transparent),
-            radial-gradient(8px 8px at 220px 130px, var(--l2), transparent),
-            radial-gradient(10px 10px at 340px 220px, var(--l3), transparent),
-            radial-gradient(7px 7px at 460px 30px, var(--l2), transparent);
-          background-size: 520px 520px;
-          animation: snowLeaves 28s linear infinite;
-          opacity: 0.28;
-        }
-        @keyframes snowFall {
-          from { background-position: 0 0, 0 0, 0 0, 0 0, 0 0, 0 0; }
-          to   { background-position: 0 1000px, 0 800px, 0 950px, 0 700px, 0 900px, 0 850px; }
-        }
-        @keyframes snowLeaves {
-          from { background-position: 0 0, 0 0, 0 0, 0 0; }
-          to   { background-position: -100px 1100px, 60px 900px, -80px 1000px, 40px 950px; }
-        }
-      `}</style>
+      
     </section>
   );
 }

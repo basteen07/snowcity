@@ -8,6 +8,9 @@ export default function Loader({ className = '' }) {
         src={loadingImg}
         alt="Loading..."
         className="w-24 sm:w-28 md:w-32 lg:w-40 animate-swing"
+        width={500}
+        height={500}
+        decoding="async"
       />
     </div>
   );
