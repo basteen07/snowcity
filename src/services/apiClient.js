@@ -58,6 +58,17 @@ const isTransientNetworkError = (err) => {
   );
 };
 
+// Fallback helper: some backends mounted public routers under '/api/api/*'.
+// If we get 404 for GET '/api/...', retry once with '/api/api/...'
+const withDoubleApiPath = (path) => {
+  if (!path || typeof path !== 'string') return path;
+  // Only adjust relative API paths
+  if (!path.startsWith('/')) return path;
+  if (path.startsWith('/api/api/')) return path; // already doubled
+  if (path.startsWith('/api/')) return `/api${path}`;
+  return path;
+};
+
 // IMPORTANT: sanitize to serializable error object
 const normalizeApiError = (error) => {
   if (axios.isCancel(error)) {
@@ -126,6 +137,28 @@ http.interceptors.response.use(
         return await http(cfg);
       } catch (e) {
         error = e;
+      }
+    }
+
+    // Fallback: some servers expose endpoints at '/api/api/*' (double /api).
+    // If a GET to '/api/*' returned 404, retry once with '/api/api/*'.
+    if (
+      status === 404 &&
+      cfg &&
+      cfg.method === 'get' &&
+      !cfg._apiPathFallback &&
+      typeof cfg.url === 'string' &&
+      cfg.url.startsWith('/api/') &&
+      !cfg.url.startsWith('/api/api/')
+    ) {
+      const alt = withDoubleApiPath(cfg.url);
+      if (alt && alt !== cfg.url) {
+        const altCfg = { ...cfg, url: alt, _apiPathFallback: true };
+        try {
+          return await http(altCfg);
+        } catch (e) {
+          error = e;
+        }
       }
     }
 

@@ -6,6 +6,7 @@ import ErrorState from '../components/common/ErrorState';
 import api from '../services/apiClient';
 import endpoints from '../services/endpoints';
 import { fetchCombos } from '../features/combos/combosSlice';
+import { addCartItem, setStep } from '../features/bookings/bookingsSlice';
 import { formatCurrency } from '../utils/formatters';
 import { getPrice } from '../utils/pricing';
 import { imgSrc } from '../utils/media';
@@ -14,7 +15,8 @@ import dayjs from 'dayjs';
 const HERO_PLACEHOLDER = 'https://picsum.photos/seed/combo-hero/1280/720';
 const IMAGE_PLACEHOLDER = (seed) => `https://picsum.photos/seed/${seed}/640/400`;
 
-const pickImage = (src, seed) => (src && typeof src === 'string' ? src : IMAGE_PLACEHOLDER(seed));
+const pickImage = (src, seed) =>
+  imgSrc(src, IMAGE_PLACEHOLDER(seed || 'combo'));
 
 const normalizeAttraction = (raw, fallbackTitle, seed) => {
   if (!raw || typeof raw !== 'object') {
@@ -22,18 +24,29 @@ const normalizeAttraction = (raw, fallbackTitle, seed) => {
       title: fallbackTitle,
       image_url: IMAGE_PLACEHOLDER(seed),
       slug: null,
-      price: 0
+      price: 0,
     };
   }
-  return {
-    title: raw.title || raw.name || fallbackTitle,
-    image_url: pickImage(raw.image_url || raw.cover_image || raw.image, seed),
-    slug: raw.slug || raw.id || raw.attraction_id || null,
-    price: Number(raw.base_price || raw.price || raw.amount || 0)
-  };
+  const title = raw.title || raw.name || fallbackTitle;
+  const srcCandidate =
+    raw?.image_media_id ??
+    raw?.media_id ??
+    raw?.cover_media_id ??
+    raw?.banner_media_id ??
+    raw?.url_path ??
+    raw?.image_url ??
+    raw?.cover_image ??
+    raw?.web_image ??
+    raw?.mobile_image ??
+    raw?.image ??
+    null;
+  const image_url = imgSrc(srcCandidate, IMAGE_PLACEHOLDER(seed));
+  const slug = raw.slug || raw.id || raw.attraction_id || null;
+  const price = Number(raw.base_price || raw.price || raw.amount || 0);
+  return { title, image_url, slug, price };
 };
 
-// Helpers for time rendering
+// Labels like "01.00pm → 02.00pm" or fallback to HH:MM
 const hhmm = (s) => {
   if (!s) return '';
   const [H = '00', M = '00'] = String(s).split(':');
@@ -43,18 +56,42 @@ const labelTime = (slot) => {
   if (slot?.start_time_12h && slot?.end_time_12h) {
     return `${slot.start_time_12h} → ${slot.end_time_12h}`;
   }
-  // fallback for HH:MM:SS or HH:MM
   const st = hhmm(slot?.start_time);
   const et = hhmm(slot?.end_time);
   return st && et ? `${st} → ${et}` : '';
 };
+
+// Robust hero image pick similar to your card logic
+function getHeroImage(combo, fallbackA, fallbackB) {
+  // Try resolving from explicit media fields first
+  const mediaCandidate =
+    combo?.banner_media_id ??
+    combo?.image_media_id ??
+    combo?.cover_media_id ??
+    null;
+  const fieldCandidate =
+    mediaCandidate ??
+    combo?.banner_image ??
+    combo?.hero_image ??
+    combo?.image_web ??
+    combo?.image_url ??
+    combo?.image ??
+    null;
+  const primary = imgSrc(fieldCandidate, '');
+  if (primary) return primary;
+
+  // Fallback to included experiences
+  return fallbackA || fallbackB || HERO_PLACEHOLDER;
+}
 
 export default function ComboDetails() {
   const { id: rawParam } = useParams();
   const navigate = useNavigate();
   const dispatch = useDispatch();
 
-  const { items: comboItems = [], status: combosStatus } = useSelector((s) => s.combos || { items: [], status: 'idle' });
+  const { items: comboItems = [], status: combosStatus } = useSelector(
+    (s) => s.combos || { items: [], status: 'idle' }
+  );
 
   React.useEffect(() => {
     if (combosStatus === 'idle') {
@@ -94,7 +131,9 @@ export default function ComboDetails() {
 
     if (fetchId == null) {
       if (numericParam == null && (combosStatus === 'loading' || combosStatus === 'idle')) {
-        setState((prev) => (prev.status === 'loading' ? prev : { status: 'loading', data: null, error: null }));
+        setState((prev) =>
+          prev.status === 'loading' ? prev : { status: 'loading', data: null, error: null }
+        );
       } else if (numericParam == null && combosStatus === 'failed') {
         setState({ status: 'failed', data: null, error: 'Combo not found' });
       }
@@ -104,14 +143,22 @@ export default function ComboDetails() {
     let mounted = true;
     const controller = new AbortController();
     setState({ status: 'loading', data: null, error: null });
+
     (async () => {
       try {
+        // Public combo detail endpoint that matches endpoints.js
         const res = await api.get(endpoints.combos.byId(fetchId), { signal: controller.signal });
         if (!mounted) return;
+        // res may be object already; keep as-is
         setState({ status: 'succeeded', data: res, error: null });
       } catch (err) {
         if (err?.canceled || !mounted) return;
-        setState({ status: 'failed', data: null, error: err?.message || 'Failed to load combo' });
+        // Fallback to matched combo if we have one from Redux
+        if (matchedCombo) {
+          setState({ status: 'succeeded', data: matchedCombo, error: null });
+        } else {
+          setState({ status: 'failed', data: null, error: err?.message || 'Failed to load combo' });
+        }
       }
     })();
 
@@ -119,7 +166,7 @@ export default function ComboDetails() {
       mounted = false;
       controller.abort();
     };
-  }, [rawParam, fetchId, combosStatus, numericParam]);
+  }, [rawParam, fetchId, combosStatus, numericParam, matchedCombo]);
 
   // Availability/slots for selected date
   const [date, setDate] = React.useState(dayjs().format('YYYY-MM-DD'));
@@ -129,19 +176,20 @@ export default function ComboDetails() {
   const [slotErr, setSlotErr] = React.useState('');
 
   const loadSlots = React.useCallback(async () => {
-  if (!fetchId || !date) return;
-  try {
-    setSlotStatus('loading');
-    setSlotErr('');
-    const out = await api.get(endpoints.combos.slots(fetchId), { params: { date } });
-    const list = Array.isArray(out) ? out : Array.isArray(out?.data) ? out.data : [];
-    setSlots(list);
-    setSlotStatus('loaded');
-  } catch (e) {
-    setSlotErr(e?.message || 'Failed to load slots');
-    setSlotStatus('failed');
-  }
-}, [fetchId, date]);
+    if (!fetchId || !date) return;
+    try {
+      setSlotStatus('loading');
+      setSlotErr('');
+      // Public slots endpoint: /api/combos/:id/slots?date=YYYY-MM-DD
+      const out = await api.get(endpoints.combos.slots(fetchId), { params: { date } });
+      const list = Array.isArray(out) ? out : Array.isArray(out?.data) ? out.data : [];
+      setSlots(list);
+      setSlotStatus('loaded');
+    } catch (e) {
+      setSlotErr(e?.message || 'Failed to load slots');
+      setSlotStatus('failed');
+    }
+  }, [fetchId, date]);
 
   React.useEffect(() => {
     if (fetchId && date) loadSlots();
@@ -187,7 +235,7 @@ export default function ComboDetails() {
       title: combo?.attraction_1_title,
       image_url: combo?.attraction_1_image,
       slug: combo?.attraction_1_slug,
-      base_price: combo?.attraction_1_price
+      base_price: combo?.attraction_1_price,
     },
     'Experience A',
     'combo-left'
@@ -198,37 +246,55 @@ export default function ComboDetails() {
       title: combo?.attraction_2_title,
       image_url: combo?.attraction_2_image,
       slug: combo?.attraction_2_slug,
-      base_price: combo?.attraction_2_price
+      base_price: combo?.attraction_2_price,
     },
     'Experience B',
     'combo-right'
   );
 
-  const heroImage = imgSrc(combo, attraction1.image_url || attraction2.image_url || HERO_PLACEHOLDER);
+  const heroImage = getHeroImage(combo, attraction1.image_url, attraction2.image_url);
   const comboPrice = getPrice(combo);
-  const baseSum = Number(combo?.attraction_1_price || 0) + Number(combo?.attraction_2_price || 0);
+  const baseSum =
+    Number(combo?.attraction_1_price || 0) + Number(combo?.attraction_2_price || 0);
   const hasBasePricing = baseSum > 0;
   const savings = hasBasePricing && comboPrice > 0 ? baseSum - comboPrice : 0;
-  const discountPercent = hasBasePricing && comboPrice > 0 ? Math.max(0, Math.round((1 - comboPrice / baseSum) * 100)) : Number(combo?.discount_percent || 0);
+  const discountPercent =
+    hasBasePricing && comboPrice > 0
+      ? Math.max(0, Math.round((1 - comboPrice / baseSum) * 100))
+      : Number(combo?.discount_percent || 0);
 
   const onBook = (slot) => {
     const q = Math.max(1, Number(qty) || 1);
-    // Navigate with slot info; adapt if you have a cart flow
-    navigate(`/checkout?type=combo&combo_id=${comboId}&combo_slot_id=${slot.combo_slot_id}&date=${date}&qty=${q}`, {
-      state: {
-        type: 'combo',
-        combo_id: comboId,
-        combo_slot_id: slot.combo_slot_id,
+    const unitPrice = slot?.price != null ? Number(slot.price) : Number(comboPrice || 0);
+    const comboSlotId = slot?.combo_slot_id ?? slot?.id ?? slot?._id ?? null;
+    if (!comboSlotId) return;
+    dispatch(
+      addCartItem({
+        itemType: 'combo',
+        comboId: Number(comboId) || comboId,
+        combo,
         date,
-        quantity: q,
-      },
-    });
+        comboSlotId,
+        slot,
+        qty: q,
+        unitPrice,
+      })
+    );
+    dispatch(setStep(1));
+    navigate('/booking');
   };
 
   return (
     <div className="min-h-screen bg-white">
+      {/* Hero */}
       <section className="relative h-[42vh] md:h-[56vh] bg-gray-200">
-        <img src={heroImage || HERO_PLACEHOLDER} alt={title} className="w-full h-full object-cover" loading="lazy" />
+        <img
+          src={heroImage || HERO_PLACEHOLDER}
+          alt={title}
+          className="w-full h-full object-cover"
+          loading="lazy"
+          draggable="false"
+        />
         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent" />
         <div className="absolute bottom-6 left-0 right-0 px-4">
           <div className="max-w-6xl mx-auto">
@@ -237,23 +303,36 @@ export default function ComboDetails() {
               {discountPercent > 0 ? <span>Save {discountPercent}%</span> : null}
             </div>
             <h1 className="text-3xl md:text-5xl font-bold text-white drop-shadow">{title}</h1>
-            {subtitle ? <p className="text-gray-200 text-sm md:text-base max-w-2xl mt-2">{subtitle}</p> : null}
+            {subtitle ? (
+              <p className="text-gray-200 text-sm md:text-base max-w-2xl mt-2">{subtitle}</p>
+            ) : null}
           </div>
         </div>
       </section>
 
+      {/* Details */}
       <section className="max-w-6xl mx-auto px-4 py-8 md:py-12 grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-8">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <figure className="relative rounded-2xl overflow-hidden shadow">
-              <img src={attraction1.image_url} alt={attraction1.title} className="w-full h-64 md:h-72 object-cover" loading="lazy" />
+              <img
+                src={attraction1.image_url}
+                alt={attraction1.title}
+                className="w-full h-64 md:h-72 object-cover"
+                loading="lazy"
+              />
               <figcaption className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-4 text-white">
                 <p className="text-sm uppercase tracking-wide text-gray-200">Included experience</p>
                 <h2 className="text-lg font-semibold">{attraction1.title}</h2>
               </figcaption>
             </figure>
             <figure className="relative rounded-2xl overflow-hidden shadow">
-              <img src={attraction2.image_url} alt={attraction2.title} className="w-full h-64 md:h-72 object-cover" loading="lazy" />
+              <img
+                src={attraction2.image_url}
+                alt={attraction2.title}
+                className="w-full h-64 md:h-72 object-cover"
+                loading="lazy"
+              />
               <figcaption className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-4 text-white">
                 <p className="text-sm uppercase tracking-wide text-gray-200">Included experience</p>
                 <h2 className="text-lg font-semibold">{attraction2.title}</h2>
@@ -269,7 +348,7 @@ export default function ComboDetails() {
           ) : null}
 
           {/* Availability */}
-          <div className="rounded-2xl border shadow-sm p-4 bg-white">
+          <div id="availability" className="rounded-2xl border shadow-sm p-4 bg-white">
             <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
               <h2 className="text-xl font-semibold">Check availability</h2>
               <div className="flex items-center gap-2">
@@ -292,15 +371,21 @@ export default function ComboDetails() {
             </div>
 
             {slotStatus === 'loading' ? (
-              <div className="py-3"><Loader size="sm" /></div>
+              <div className="py-3">
+                <Loader size="sm" />
+              </div>
             ) : null}
             {slotStatus === 'failed' ? (
-              <div className="py-3"><ErrorState message={slotErr || 'Failed to load slots'} /></div>
+              <div className="py-3">
+                <ErrorState message={slotErr || 'Failed to load slots'} />
+              </div>
             ) : null}
             {slotStatus === 'loaded' && (
               <>
                 {!slots.length ? (
-                  <div className="text-sm text-gray-500">No slots available for {dayjs(date).format('DD MMM YYYY')}.</div>
+                  <div className="text-sm text-gray-500">
+                    No slots available for {dayjs(date).format('DD MMM YYYY')}.
+                  </div>
                 ) : (
                   <div className="space-y-2">
                     {slots.map((slot) => {
@@ -308,7 +393,10 @@ export default function ComboDetails() {
                       const price = slot.price == null ? null : Number(slot.price);
                       return (
                         <div
-                          key={slot.combo_slot_id || `${slot.combo_id}-${slot.start_time}-${slot.end_time}`}
+                          key={
+                            slot.combo_slot_id ||
+                            `${slot.combo_id}-${slot.start_time}-${slot.end_time}`
+                          }
                           className="flex items-center justify-between rounded-md border px-3 py-2"
                         >
                           <div className="text-sm">
@@ -346,7 +434,9 @@ export default function ComboDetails() {
             <div>
               <p className="text-xs uppercase tracking-wide text-gray-500">Combo price</p>
               <div className="flex items-baseline gap-2">
-                <span className="text-3xl font-semibold text-gray-900">{formatCurrency(comboPrice)}</span>
+                <span className="text-3xl font-semibold text-gray-900">
+                  {formatCurrency(comboPrice)}
+                </span>
                 <span className="text-sm text-gray-500">per combo</span>
               </div>
               {hasBasePricing ? (
@@ -364,7 +454,10 @@ export default function ComboDetails() {
             </div>
 
             <div className="space-y-3 text-sm text-gray-600">
-              <p>Includes admission for both attractions listed below. Book together to lock in bundled savings.</p>
+              <p>
+                Includes admission for both attractions listed below. Book together to lock in
+                bundled savings.
+              </p>
               <ul className="list-disc list-inside space-y-1">
                 <li>{attraction1.title}</li>
                 <li>{attraction2.title}</li>
