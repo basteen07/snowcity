@@ -15,7 +15,7 @@ export default function Footer() {
                 alt="SnowCity"
                 className="h-9 w-auto object-contain"
               />
-              <h3 className="text-white font-semibold text-lg">SnowCity</h3>
+             
             </div>
             <p className="text-sm text-gray-400">
               Experience the magic of snow and fun in the city’s coolest

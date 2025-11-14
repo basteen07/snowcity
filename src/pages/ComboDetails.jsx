@@ -133,7 +133,7 @@ export default function ComboDetails() {
   try {
     setSlotStatus('loading');
     setSlotErr('');
-    const out = await api.get(endpoints.combos.slots(fetchId), { date }); // <— use endpoints
+    const out = await api.get(endpoints.combos.slots(fetchId), { params: { date } });
     const list = Array.isArray(out) ? out : Array.isArray(out?.data) ? out.data : [];
     setSlots(list);
     setSlotStatus('loaded');
