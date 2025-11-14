@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { fetchBlogs } from '../features/blogs/blogsSlice';
 import Loader from '../components/common/Loader';
 import ErrorState from '../components/common/ErrorState';
+import { imgSrc } from '../utils/media';
 
 const toBlogUrl = (blog) => {
   if (!blog) return '#';
@@ -43,38 +44,42 @@ export default function VisitorBlogs() {
       ) : null}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {items.map((blog) => (
-          <Link
-            key={blog.blog_id || blog.id || blog.slug}
-            to={toBlogUrl(blog)}
-            className="group overflow-hidden rounded-2xl border shadow-sm bg-white transition-transform hover:-translate-y-1"
-          >
-            {blog.image_url ? (
-              <img
-                src={blog.image_url}
-                alt={blog.title || 'Blog'}
-                className="w-full h-44 object-cover transition-transform duration-300 group-hover:scale-105"
-                loading="lazy"
-              />
-            ) : null}
-            <div className="p-5">
-              <h2 className="text-lg font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">
-                {blog.title || 'Blog article'}
-              </h2>
-              {blog.author ? (
-                <p className="text-xs uppercase tracking-wide text-gray-400 mt-2">By {blog.author}</p>
+        {items.map((blog) => {
+          const cover = imgSrc(blog);
+          return (
+            <Link
+              key={blog.blog_id || blog.id || blog.slug}
+              to={toBlogUrl(blog)}
+              className="group overflow-hidden rounded-2xl border shadow-sm bg-white transition-transform hover:-translate-y-1"
+            >
+              {cover ? (
+                <img
+                  src={cover}
+                  alt={blog.title || 'Blog'}
+                  className="w-full h-44 object-cover transition-transform duration-300 group-hover:scale-105"
+                  loading="lazy"
+                  decoding="async"
+                />
               ) : null}
-              {blog.short_description || blog.excerpt ? (
-                <p className="text-sm text-gray-600 mt-3 line-clamp-3">
-                  {blog.short_description || blog.excerpt}
-                </p>
-              ) : null}
-              <span className="mt-4 inline-flex items-center text-sm text-blue-600">
-                Keep reading →
-              </span>
-            </div>
-          </Link>
-        ))}
+              <div className="p-5">
+                <h2 className="text-lg font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">
+                  {blog.title || 'Blog article'}
+                </h2>
+                {blog.author ? (
+                  <p className="text-xs uppercase tracking-wide text-gray-400 mt-2">By {blog.author}</p>
+                ) : null}
+                {blog.short_description || blog.excerpt ? (
+                  <p className="text-sm text-gray-600 mt-3 line-clamp-3">
+                    {blog.short_description || blog.excerpt}
+                  </p>
+                ) : null}
+                <span className="mt-4 inline-flex items-center text-sm text-blue-600">
+                  Keep reading →
+                </span>
+              </div>
+            </Link>
+          );
+        })}
       </div>
 
       {!items.length && blogs.status === 'succeeded' ? (

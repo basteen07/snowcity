@@ -4,6 +4,7 @@ import { useSearchParams } from 'react-router-dom';
 import dayjs from 'dayjs';
 import api from '../services/apiClient';
 import endpoints from '../services/endpoints';
+import { imgSrc } from '../utils/media';
 
 import {
   setStep, setContact,
@@ -35,7 +36,57 @@ const getSlotLabel = (s) =>
   s?.label || (s?.start_time && s?.end_time ? `${s.start_time} - ${s.end_time}` : `Slot #${s?.id ?? s?._id ?? s?.slot_id ?? '?'}`);
 const fmtPhone = (s) => (s || '').replace(/[^\d+]/g, '');
 const getAddonPrice = (a) => Number(a?.price ?? a?.amount ?? 0);
+const getAddonId = (addon) => addon?.id ?? addon?.addon_id ?? addon?._id ?? null;
+const getAddonName = (addon) => addon?.name ?? addon?.title ?? addon?.label ?? 'Addon';
+const getAddonImage = (addon) => {
+  if (!addon) return null;
+  const candidates = [addon, addon?.image_url, addon?.image, addon?.thumbnail, addon?.cover_image];
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    const resolved = typeof candidate === 'string' ? imgSrc(candidate) : imgSrc(candidate);
+    if (resolved) return resolved;
+  }
+  return null;
+};
+const getAddonDescription = (addon) => addon?.short_description ?? addon?.subtitle ?? addon?.description ?? '';
+const clampQty = (qty, min = 0, max = 10) => Math.min(Math.max(qty, min), max);
 const getComboId = (c) => c?.id ?? c?._id ?? c?.combo_id ?? null;
+const getComboLabel = (combo, fallbackId = null) => {
+  if (!combo) return fallbackId ? `Combo ${fallbackId}` : 'Combo';
+  const direct =
+    combo.name ??
+    combo.title ??
+    combo.combo_name ??
+    combo.label ??
+    combo.slug ??
+    combo.code ??
+    null;
+  if (direct) return direct;
+
+  const collected = [];
+  const attrLike = [
+    combo.attraction_1,
+    combo.attraction_2,
+    combo.attraction_one,
+    combo.attraction_two,
+  ].filter(Boolean);
+  if (Array.isArray(combo.attractions)) attrLike.push(...combo.attractions.filter(Boolean));
+  attrLike.forEach((a) => {
+    const label = a?.title ?? a?.name ?? a?.label ?? null;
+    if (label) collected.push(label);
+  });
+
+  if (!collected.length) {
+    const n1 = combo.attraction_1_name ?? combo.attraction1_name ?? combo.attractionOneName ?? null;
+    const n2 = combo.attraction_2_name ?? combo.attraction2_name ?? combo.attractionTwoName ?? null;
+    [n1, n2].filter(Boolean).forEach((n) => collected.push(n));
+  }
+
+  if (collected.length) return collected.join(' + ');
+
+  const fallback = fallbackId ?? combo.combo_id ?? combo.id ?? combo._id;
+  return fallback ? `Combo ${fallback}` : 'Combo';
+};
 // Normalize mobile for PayPhi (prefer 10-digit local number)
 const normalizePayphiMobile = (s) => {
   const digits = String(s || '').replace(/\D/g, '');
@@ -180,7 +231,7 @@ export default function Booking() {
         ? Number(selectedSlot.price)
         : Number(selectedCombo?.combo_price || selectedCombo?.price || 0);
       return {
-        title: selectedCombo?.name || selectedCombo?.title || `Combo #${getComboId(selectedCombo)}`,
+        title: getComboLabel(selectedCombo, getComboId(selectedCombo)),
         price
       };
     }
@@ -517,10 +568,24 @@ export default function Booking() {
                 <div className="flex flex-col">
                   <span className="font-medium">
                     {it.itemType === 'combo'
-                      ? (it.combo?.name || it.combo?.title || `Combo #${it.comboId}`)
+                      ? getComboLabel(it.combo || selectedCombo, it.comboId)
                       : (it.attraction?.name || it.attraction?.title || `#${it.attractionId}`)}
                   </span>
                   <span className="text-xs text-gray-500 uppercase">{it.itemType}</span>
+                  {(it.addons || []).length ? (
+                    <ul className="mt-2 space-y-1 text-xs text-gray-600">
+                      {it.addons.map((addon, i) => {
+                        const price = getAddonPrice(addon);
+                        const qty = Number(addon.quantity || 0);
+                        if (!qty) return null;
+                        return (
+                          <li key={`cart-addon-${addon.addon_id || i}`}>
+                            + {addon.name || getAddonName(addon)} × {qty} — ₹{price * qty}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  ) : null}
                 </div>
               </td>
               <td className="py-2 pr-4">{toYMD(it.date)}</td>
@@ -549,17 +614,32 @@ export default function Booking() {
       <div className="space-y-6">
         {cart.map((it, idx) => {
           // clone stored addons to avoid mutating frozen redux objects
-          const selectedMap = new Map((it.addons || []).map(a => [String(a.addon_id), { ...a }]));
-          const onQtyChange = (addon, delta) => {
-            const key = String(addon.id);
+          const selectedMap = new Map((it.addons || []).map((a) => [String(a.addon_id), { ...a }]));
+          const onQtyChange = (addon, delta, meta) => {
+            const { addonId, maxQty, name, price, image, description } = meta;
+            if (!addonId) return;
+            const key = String(addonId);
             const existing = selectedMap.get(key);
-            const base = existing ? { ...existing } : { addon_id: addon.id, quantity: 0, price: getAddonPrice(addon), name: addon.name || addon.title };
-            const nextQty = Math.max(0, Number(base.quantity || 0) + delta);
-            const nextEntry = { ...base, quantity: nextQty };
-            selectedMap.set(key, nextEntry);
+            const base = existing
+              ? { ...existing }
+              : { addon_id: addonId, quantity: 0, price, name, image, description, max_quantity: maxQty };
+            const nextQty = clampQty(Number(base.quantity || 0) + delta, 0, maxQty);
+            if (nextQty <= 0) {
+              selectedMap.delete(key);
+            } else {
+              selectedMap.set(key, {
+                ...base,
+                quantity: nextQty,
+                price,
+                name,
+                image,
+                description,
+                max_quantity: maxQty
+              });
+            }
             const next = Array.from(selectedMap.values())
-              .filter(a => Number(a.quantity) > 0)
-              .map(a => ({ ...a }));
+              .filter((a) => Number(a.quantity) > 0)
+              .map((a) => ({ ...a }));
             dispatch(setItemAddons({ id: it.id, addons: next }));
           };
 
@@ -567,23 +647,67 @@ export default function Booking() {
             <div key={`addons-item-${it.id || idx}`} className="rounded-xl border p-4">
               <div className="font-medium mb-3">
                 {it.itemType === 'combo'
-                  ? (it.combo?.name || it.combo?.title || `Combo #${it.comboId}`)
+                  ? getComboLabel(it.combo || selectedCombo, it.comboId)
                   : (it.attraction?.name || it.attraction?.title || `#${it.attractionId}`)}
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {addons.map((a, i) => {
-                  const selA = selectedMap.get(String(a.id));
+                  const addonId = getAddonId(a);
+                  if (addonId == null) return null;
+                  const key = String(addonId);
+                  const price = getAddonPrice(a);
+                  const name = getAddonName(a);
+                  const image = getAddonImage(a);
+                  const description = getAddonDescription(a);
+                  const maxQtyRaw = Number(a?.max_quantity ?? a?.max_per_booking ?? 10);
+                  const maxQty = Number.isFinite(maxQtyRaw) && maxQtyRaw > 0 ? maxQtyRaw : 10;
+                  const selA = selectedMap.get(key);
                   const q = Number(selA?.quantity || 0);
+                  const meta = { addonId, maxQty, name, price, image, description };
+                  const total = price * q;
                   return (
-                    <div key={`addon-${a.id ?? i}`} className="flex items-center justify-between rounded-lg border p-3">
-                      <div>
-                        <div className="font-medium">{a.name || a.title || 'Addon'}</div>
-                        <div className="text-xs text-gray-600">₹{getAddonPrice(a)}</div>
+                    <div key={`addon-${addonId ?? i}`} className="flex flex-col gap-3 rounded-lg border p-3">
+                      <div className="flex items-center gap-3">
+                        {image ? (
+                          <img
+                            src={image}
+                            alt={name}
+                            className="h-16 w-16 rounded-lg object-cover"
+                            loading="lazy"
+                            decoding="async"
+                          />
+                        ) : (
+                          <div className="h-16 w-16 rounded-lg bg-gray-100 flex items-center justify-center text-[11px] text-gray-500">No image</div>
+                        )}
+                        <div className="flex-1">
+                          <div className="font-medium text-sm">{name}</div>
+                          {description ? <div className="text-xs text-gray-500 line-clamp-2">{description}</div> : null}
+                          <div className="text-xs text-gray-600 mt-1">₹{price} each{maxQty ? ` · Max ${maxQty}` : ''}</div>
+                        </div>
                       </div>
-                      <div className="inline-flex items-center rounded-full border overflow-hidden">
-                        <button type="button" className="px-3 py-1 hover:bg-gray-50" onClick={() => onQtyChange(a, -1)}>-</button>
-                        <div className="w-10 text-center">{q}</div>
-                        <button type="button" className="px-3 py-1 hover:bg-gray-50" onClick={() => onQtyChange(a, +1)}>+</button>
+                      <div className="flex items-center justify-between">
+                        <div className="text-xs text-gray-600">Subtotal: ₹{total}</div>
+                        <div className="inline-flex items-center rounded-full border overflow-hidden">
+                          <button
+                            type="button"
+                            className="px-3 py-1 hover:bg-gray-50 disabled:opacity-50"
+                            onClick={() => onQtyChange(a, -1, meta)}
+                            disabled={q <= 0}
+                            aria-label={`Decrease ${name}`}
+                          >
+                            -
+                          </button>
+                          <div className="w-10 text-center text-sm">{q}</div>
+                          <button
+                            type="button"
+                            className="px-3 py-1 hover:bg-gray-50 disabled:opacity-50"
+                            onClick={() => onQtyChange(a, +1, meta)}
+                            disabled={q >= maxQty}
+                            aria-label={`Increase ${name}`}
+                          >
+                            +
+                          </button>
+                        </div>
                       </div>
                     </div>
                   );
@@ -637,7 +761,7 @@ export default function Booking() {
                             const val = getComboId(c);
                             return (
                               <option key={`combo-opt-${val ?? idx}`} value={val ?? ''}>
-                                {c.name || c.title || `Combo #${val ?? idx}`}
+                                {getComboLabel(c, val ?? idx)}
                               </option>
                             );
                           })}
@@ -776,7 +900,7 @@ export default function Booking() {
                 <div key={`sum-${it.id || idx}`} className="flex flex-col md:flex-row md:items-center md:justify-between gap-1">
                   <div className="text-gray-700">
                     {(it.itemType === 'combo'
-                      ? (it.combo?.name || it.combo?.title || `Combo #${it.comboId}`)
+                      ? getComboLabel(it.combo || selectedCombo, it.comboId)
                       : (it.attraction?.name || it.attraction?.title || `Attraction #${it.attractionId}`))} — {toYMD(it.date)} — {it.qty} ticket(s)
                   </div>
                   <div className="font-medium">₹{Number(it.unitPrice || 0) * Number(it.qty || 1)}</div>

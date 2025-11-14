@@ -44,6 +44,10 @@ const BlogForm = lazy(() => import('../pages/catalog/BlogForm'));
 const CombosList = lazy(() => import('../pages/catalog/CombosList'));
 const ComboForm = lazy(() => import('../pages/catalog/ComboForm'));
 
+// Gallery manager
+const GalleryManager = lazy(() => import('../pages/catalog/GalleryManager.jsx'));
+const GalleryForm = lazy(() => import('../pages/catalog/GalleryForm.jsx'));
+
 
 const ComboSlotList = lazy(() => import('../pages/catalog/ComboSlotList.jsx'));
 const ComboSlotForm = lazy(() => import('../pages/catalog/ComboSlotForm.jsx'));
@@ -165,6 +169,11 @@ export default function AdminRouter() {
           <Route path="catalog/combos" element={<CombosList />} />
           <Route path="catalog/combos/new" element={<ComboForm />} />
           <Route path="catalog/combos/:id" element={<ComboForm />} />
+
+          {/* Gallery */}
+          <Route path="catalog/gallery" element={<GalleryManager />} />
+          <Route path="catalog/gallery/new" element={<GalleryForm />} />
+          <Route path="catalog/gallery/:id" element={<GalleryForm />} />
 
           {/* Users */}
           <Route path="users" element={<UsersList />} />

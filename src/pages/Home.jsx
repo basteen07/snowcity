@@ -21,6 +21,7 @@ import BlogCard from '../components/cards/BlogCard';
 import Loader from '../components/common/Loader';
 import ErrorState from '../components/common/ErrorState';
 import LazyVisible from '../components/common/LazyVisible';
+import { imgSrc } from '../utils/media';
 
 // small helpers for localStorage caching
 const CACHE_KEY = 'sc_home_cache_v1';
@@ -168,20 +169,43 @@ export default function Home() {
               <ErrorState message={gallery.error?.message || 'Failed to load gallery'} onRetry={() => dispatch(fetchGallery({ active: true, limit: 50 }))} />
             ) : galleryItems.length ? (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
-                {galleryItems.slice(0, 10).map((item) => (
-                  <div key={item.gallery_item_id || item.id} className="relative rounded-xl overflow-hidden border shadow-sm">
-                    {item.media_type === 'video' ? (
-                      <video src={item.url} className="w-full h-full object-cover" controls muted preload="metadata" />
-                    ) : (
-                      <img src={item.url} alt={item.title || 'Gallery item'} className="w-full h-full object-cover" loading="lazy" decoding="async" />
-                    )}
-                    {item.title ? (
-                      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent p-2 text-xs text-white">
-                        {item.title}
-                      </div>
-                    ) : null}
-                  </div>
-                ))}
+                {galleryItems.slice(0, 10).map((item) => {
+                  const isVideo = String(item.media_type || '').toLowerCase() === 'video';
+                  const mediaUrl = isVideo
+                    ? imgSrc(item.media_url || item.url || item)
+                    : imgSrc(item.image_url || item.url || item);
+                  const posterUrl = imgSrc(item.thumbnail || item.poster_url || null);
+
+                  if (!mediaUrl) return null;
+
+                  return (
+                    <div key={item.gallery_item_id || item.id} className="relative rounded-xl overflow-hidden border shadow-sm">
+                      {isVideo ? (
+                        <video
+                          src={mediaUrl}
+                          className="w-full h-full object-cover"
+                          controls
+                          muted
+                          preload="metadata"
+                          poster={posterUrl || undefined}
+                        />
+                      ) : (
+                        <img
+                          src={mediaUrl}
+                          alt={item.title || 'Gallery item'}
+                          className="w-full h-full object-cover"
+                          loading="lazy"
+                          decoding="async"
+                        />
+                      )}
+                      {item.title ? (
+                        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent p-2 text-xs text-white">
+                          {item.title}
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
               </div>
             ) : (
               <Loader />

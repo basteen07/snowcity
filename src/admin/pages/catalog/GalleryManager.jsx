@@ -3,6 +3,24 @@ import adminApi from '../../services/adminApi';
 import A from '../../services/adminEndpoints';
 import AdminTable from '../../components/common/AdminTable';
 import { useNavigate } from 'react-router-dom';
+import { imgSrc } from '../../../utils/media';
+
+const ensureArray = (val) => {
+  if (Array.isArray(val)) return val;
+  return [];
+};
+
+const parseGalleryResponse = (res) => {
+  if (!res) return { items: [], meta: null };
+  if (Array.isArray(res)) return { items: res, meta: null };
+  if (Array.isArray(res?.data)) return { items: res.data, meta: res.meta || null };
+  if (res?.data && typeof res.data === 'object') {
+    if (Array.isArray(res.data.data)) {
+      return { items: res.data.data, meta: res.data.meta || res.meta || null };
+    }
+  }
+  return { items: ensureArray(res.items || res.list), meta: res.meta || null };
+};
 
 export default function GalleryManager() {
   const navigate = useNavigate();
@@ -21,7 +39,7 @@ export default function GalleryManager() {
         type: nextFilters.type || undefined,
       };
       const res = await adminApi.get(A.gallery(), { params });
-      const items = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
+      const { items } = parseGalleryResponse(res);
       setState({ status: 'succeeded', items, error: null });
     } catch (err) {
       setState((s) => ({ ...s, status: 'failed', error: err }));
@@ -39,7 +57,7 @@ export default function GalleryManager() {
           {row.media_type === 'video' ? (
             <video src={row.url} className="w-full h-full object-cover" muted />
           ) : (
-            <img src={row.url} alt={row.title || 'Gallery media'} className="w-full h-full object-cover" />
+            <img src={imgSrc(row) || row.url} alt={row.title || 'Gallery media'} className="w-full h-full object-cover" loading="lazy" />
           )}
         </div>
       )

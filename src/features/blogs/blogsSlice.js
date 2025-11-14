@@ -12,7 +12,13 @@ export const fetchBlogs = createAsyncThunk(
   async (params = { active: true, limit: 3, page: 1 }, { signal, rejectWithValue }) => {
     try {
       const res = await api.get(endpoints.blogs.list(), { params, signal });
-      const list = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
+      const list = Array.isArray(res?.data)
+        ? res.data
+        : Array.isArray(res)
+          ? res
+          : (res?.data && typeof res.data === 'object' && Array.isArray(res.data.data))
+            ? res.data.data
+            : [];
       return list;
     } catch (err) {
       return rejectWithValue(err);

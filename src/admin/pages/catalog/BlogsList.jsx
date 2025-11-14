@@ -3,6 +3,7 @@ import adminApi from '../../services/adminApi';
 import A from '../../services/adminEndpoints';
 import AdminTable from '../../components/common/AdminTable';
 import { useNavigate } from 'react-router-dom';
+import { imgSrc } from '../../../utils/media';
 
 const CLIENT_URL = import.meta.env?.VITE_CLIENT_URL || window.location.origin;
 
@@ -12,6 +13,32 @@ const slugify = (t) =>
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/(^-|-$)+/g, '')
     .slice(0, 120);
+
+const ensureArray = (val) => {
+  if (Array.isArray(val)) return val;
+  if (val == null) return [];
+  return [];
+};
+
+const parseBlogsResponse = (res) => {
+  if (!res) return { items: [], meta: null };
+
+  if (Array.isArray(res)) {
+    return { items: res, meta: null };
+  }
+
+  if (Array.isArray(res?.data)) {
+    return { items: res.data, meta: res.meta || null };
+  }
+
+  if (res?.data && typeof res.data === 'object') {
+    if (Array.isArray(res.data.data)) {
+      return { items: res.data.data, meta: res.data.meta || res.meta || null };
+    }
+  }
+
+  return { items: ensureArray(res.items || res.list), meta: res.meta || null };
+};
 
 export default function BlogsList() {
   const navigate = useNavigate();
@@ -27,13 +54,28 @@ export default function BlogsList() {
   });
 
   const load = async (page = 1) => {
+    const q = state.q || '';
+    const active = state.active || '';
+    const limit = state.limit || 20;
+
     setState((s) => ({ ...s, status: 'loading', error: null, page }));
     try {
       const res = await adminApi.get(A.blogs(), {
-        params: { q: state.q || undefined, active: state.active || undefined, page, limit: state.limit }
+        params: {
+          q: q || undefined,
+          active: active || undefined,
+          page,
+          limit
+        }
       });
-      const items = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
-      setState((s) => ({ ...s, status: 'succeeded', items, meta: res?.meta || null, page }));
+      const { items, meta } = parseBlogsResponse(res);
+      setState((s) => ({
+        ...s,
+        status: 'succeeded',
+        items,
+        meta: meta || { page, limit, count: items.length },
+        page
+      }));
     } catch (err) {
       setState((s) => ({ ...s, status: 'failed', error: err }));
     }
@@ -123,6 +165,22 @@ export default function BlogsList() {
       <AdminTable
         keyField="blog_id"
         columns={[
+          {
+            key: 'preview',
+            title: 'Cover',
+            render: (row) => {
+              const cover = imgSrc(row);
+              return (
+                <div className="w-20 h-14 rounded-md overflow-hidden bg-gray-100 flex items-center justify-center">
+                  {cover ? (
+                    <img src={cover} alt={row.title || 'Blog cover'} className="w-full h-full object-cover" loading="lazy" />
+                  ) : (
+                    <span className="text-[10px] text-gray-500">No image</span>
+                  )}
+                </div>
+              );
+            }
+          },
           { key: 'title', title: 'Title' },
           { key: 'slug', title: 'Slug' },
           { key: 'author', title: 'Author' },

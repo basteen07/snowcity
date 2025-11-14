@@ -24,6 +24,7 @@ import {
   UserCog,
   ChevronDown,
 } from 'lucide-react';
+import PermissionGate from '../common/PermissionGate.jsx';
 
 const baseLinkClasses =
   'group relative flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-colors';
@@ -69,18 +70,25 @@ function usePersistedSections(defaults) {
 export default function AdminSidebar({ collapsed, onClose }) {
   const location = useLocation();
 
-  // Roles and permissions from Redux
+  // Roles, permissions, and user id from Redux
   const rolesRaw = useSelector((s) => s.adminAuth?.user?.roles || []);
+  const userIdRaw = useSelector((s) => s.adminAuth?.user?.user_id ?? s.adminAuth?.user?.id ?? null);
   const permsRaw = useSelector((s) => s.adminAuth?.perms || []);
   const roles = (rolesRaw || []).map(normalizeRoleName);
   const perms = new Set((permsRaw || []).map((p) => String(p).toLowerCase().trim()));
+  const isSuperUser = userIdRaw != null && Number(userIdRaw) === 1;
 
-  // Show “Admin Management” if root/superadmin OR you granted explicit permission keys
+  // Show “Admin Management” if root/superadmin/superuser OR you granted explicit permission keys
   const canSeeAdminMgmt =
+    isSuperUser ||
     roles.includes('root') ||
-    roles.includes('admin') ||
+    roles.includes('superadmin') ||
+    perms.has('admin-management:manage') ||
+    perms.has('admin-management:write') ||
+    perms.has('admin-management:read') ||
     perms.has('admins:manage') ||
-    perms.has('admins:read')||false||true;
+    perms.has('admins:write') ||
+    perms.has('admins:read');
 
   const handleNavClick = () => {
     if (typeof onClose === 'function') onClose();
@@ -125,22 +133,18 @@ export default function AdminSidebar({ collapsed, onClose }) {
           { to: '/admin/catalog/combo-slots/new', label: 'Create Combo Slot', icon: Clock3 },
           { to: '/admin/catalog/addons', label: 'Add-ons', icon: Gift },
           { to: '/admin/catalog/offers', label: 'Offers', icon: BadgePercent },
-          { to: '/admin/catalog/gallery', label: 'Gallery', icon: ImageIcon },
+          { to: '/admin/catalog/gallery', label: 'Gallery', icon: ImageIcon, permsAny: ['gallery:read'] },
           { to: '/admin/catalog/coupons', label: 'Coupons', icon: Ticket },
           { to: '/admin/catalog/banners', label: 'Banners', icon: ImageIcon },
           { to: '/admin/catalog/pages', label: 'Pages', icon: FileText },
           { to: '/admin/catalog/blogs', label: 'Blogs', icon: Newspaper },
         ],
       },
-      ...(canSeeAdminMgmt
-        ? [
-            {
-              key: 'AdminManagement',
-              label: 'Admin Management',
-              items: [{ to: '/admin/admins', label: 'Admins', icon: UserCog }],
-            },
-          ]
-        : []),
+      {
+        key: 'AdminManagement',
+        label: 'Admin Management',
+        items: [{ to: '/admin/admins', label: 'Admins', icon: UserCog, permsAny: ['admin-management:read'] }],
+      },
       {
         key: 'UsersRBAC',
         label: 'Users & RBAC',
@@ -253,27 +257,38 @@ export default function AdminSidebar({ collapsed, onClose }) {
                 ].join(' ')}
               >
                 <div className="mt-1 space-y-1">
-                  {section.items.map(({ to, end, label, icon: Icon }) => (
-                    <NavLink
-                      key={to}
-                      to={to}
-                      end={end}
-                      title={collapsed ? label : undefined}
-                      className={({ isActive }) =>
-                        [
-                          baseLinkClasses,
-                          collapsed ? 'justify-center px-2' : 'justify-start px-3',
-                          isActive
-                            ? 'bg-gray-900 text-white dark:bg-neutral-700 dark:text-white shadow-sm'
-                            : 'text-gray-600 dark:text-neutral-300 hover:bg-gray-100 dark:hover:bg-neutral-800',
-                        ].join(' ')
-                      }
-                      onClick={handleNavClick}
-                    >
-                      <Icon className="h-5 w-5" aria-hidden="true" />
-                      {!collapsed && <span>{label}</span>}
-                    </NavLink>
-                  ))}
+                  {section.items.map(({ to, end, label, icon: Icon, permsAny, permsAll }) => {
+                    const link = (
+                      <NavLink
+                        key={to}
+                        to={to}
+                        end={end}
+                        title={collapsed ? label : undefined}
+                        className={({ isActive }) =>
+                          [
+                            baseLinkClasses,
+                            collapsed ? 'justify-center px-2' : 'justify-start px-3',
+                            isActive
+                              ? 'bg-gray-900 text-white dark:bg-neutral-700 dark:text-white shadow-sm'
+                              : 'text-gray-600 dark:text-neutral-300 hover:bg-gray-100 dark:hover:bg-neutral-800',
+                          ].join(' ')
+                        }
+                        onClick={handleNavClick}
+                      >
+                        <Icon className="h-5 w-5" aria-hidden="true" />
+                        {!collapsed && <span>{label}</span>}
+                      </NavLink>
+                    );
+
+                    if (permsAny || permsAll) {
+                      return (
+                        <PermissionGate key={to} anyOf={permsAny || []} allOf={permsAll || []}>
+                          {link}
+                        </PermissionGate>
+                      );
+                    }
+                    return link;
+                  })}
                 </div>
               </div>
             </div>
