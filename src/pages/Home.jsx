@@ -118,94 +118,96 @@ export default function Home() {
     return [...c, ...o];
   }, [comboItems, offerItems]);
 
+  // brand gradient colors
+  const arcticTop = "#0b1a33";      // deep arctic blue
+  const arcticMid = "#123a63";      // mid icy blue
+  const arcticBottom = "#eaf6ff";   // near-white icy
+
   return (
-    <div className="relative">
+    <div className={`relative min-h-screen bg-gradient-to-b from-[${arcticTop}] via-[${arcticMid}] to-[${arcticBottom}]`}>
       {/* Hero (use cached if slice is still loading) */}
       {banners.status === 'failed' ? (
         <ErrorState message={banners.error?.message || 'Failed to load banners'} />
       ) : bannerItems.length ? (
-        <HeroCarousel banners={bannerItems} />
+        <HeroCarousel banners={bannerItems} waveColor={arcticTop} />
       ) : (
         <div className="min-h-[40vh] flex items-center justify-center"><Loader /></div>
       )}
 
       {/* Attractions (lazy mount, cached fallback) */}
-      <LazyVisible minHeight={420} placeholder={<div className="py-10"><Loader /></div>}>
+      <LazyVisible minHeight={420} placeholder={<div className="py-8"><Loader /></div>}>
         {attractions.status === 'failed' ? (
           <ErrorState message={attractions.error?.message || 'Failed to load attractions'} />
         ) : attractionItems.length ? (
           <AttractionsCarousel items={attractionItems} />
         ) : (
-          <div className="py-10"><Loader /></div>
+          <div className="py-8"><Loader /></div>
         )}
       </LazyVisible>
 
       {/* Offers + Combos (lazy mount) */}
-      <LazyVisible minHeight={420} placeholder={<div className="py-10"><Loader /></div>}>
+      <LazyVisible minHeight={420} placeholder={<div className="py-8"><Loader /></div>}>
         <OffersCarousel offers={offerItems} combos={comboItems} />
       </LazyVisible>
 
-      {/* Scrolling Marquee (lazy) */}
-      {/* <LazyVisible minHeight={60}>
-        {marqueeItems.length ? <Marquee items={marqueeItems} /> : null}
-      </LazyVisible> */}
-
-      {/* Testimonials (lazy) */}
-      <LazyVisible minHeight={320} placeholder={<div className="py-8" /> }>
+      {/* Testimonials (lazy) – keep compact placeholder to avoid big gaps */}
+      <LazyVisible minHeight={320} placeholder={<div className="py-6" /> }>
         <Testimonials />
       </LazyVisible>
 
-      {/* Gallery (lazy, cached fallback) */}
-      <LazyVisible minHeight={420} placeholder={<div className="py-10"><Loader /></div>}>
-        <section className="py-10">
+      {/* GALLERY */}
+      <LazyVisible minHeight={420} placeholder={<div className="py-8"><Loader /></div>}>
+        <section id="gallery" className="relative py-8 overflow-hidden">
           <div className="max-w-6xl mx-auto px-4">
             <div className="flex items-end justify-between mb-4">
-              <h2 className="text-xl md:text-2xl font-semibold">Gallery</h2>
-              <Link to="/gallery" className="text-sm text-blue-600 hover:underline">
+              <h2 className="text-xl md:text-2xl font-semibold text-white/90">Gallery</h2>
+              <Link to="/gallery" className="text-sm text-blue-200 hover:text-white underline-offset-2 hover:underline">
                 View more
               </Link>
             </div>
+
             {gallery.status === 'failed' ? (
-              <ErrorState message={gallery.error?.message || 'Failed to load gallery'} onRetry={() => dispatch(fetchGallery({ active: true, limit: 50 }))} />
+              <ErrorState
+                message={gallery.error?.message || 'Failed to load gallery'}
+                onRetry={() => dispatch(fetchGallery({ active: true, limit: 50 }))}
+              />
             ) : galleryItems.length ? (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
-                {galleryItems.slice(0, 10).map((item) => {
-                  const isVideo = String(item.media_type || '').toLowerCase() === 'video';
-                  const mediaUrl = isVideo
-                    ? imgSrc(item.media_url || item.url || item)
-                    : imgSrc(item.image_url || item.url || item);
-                  const posterUrl = imgSrc(item.thumbnail || item.poster_url || null);
+              <div className="overflow-hidden w-full relative h-[160px]">
+                {/* Light, single animation used in both Gallery and Blogs */}
+                <div className="flex gap-4 marquee">
+                  {[...galleryItems.slice(0, 12), ...galleryItems.slice(0, 12)].map((item, i) => {
+                    const isVideo = String(item.media_type || '').toLowerCase() === 'video';
+                    const mediaUrl = isVideo
+                      ? imgSrc(item.media_url || item.url)
+                      : imgSrc(item.image_url || item.url);
+                    const posterUrl = imgSrc(item.thumbnail || item.poster_url || null);
 
-                  if (!mediaUrl) return null;
-
-                  return (
-                    <div key={item.gallery_item_id || item.id} className="relative rounded-xl overflow-hidden border shadow-sm">
-                      {isVideo ? (
-                        <video
-                          src={mediaUrl}
-                          className="w-full h-full object-cover"
-                          controls
-                          muted
-                          preload="metadata"
-                          poster={posterUrl || undefined}
-                        />
-                      ) : (
-                        <img
-                          src={mediaUrl}
-                          alt={item.title || 'Gallery item'}
-                          className="w-full h-full object-cover"
-                          loading="lazy"
-                          decoding="async"
-                        />
-                      )}
-                      {item.title ? (
-                        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent p-2 text-xs text-white">
-                          {item.title}
-                        </div>
-                      ) : null}
-                    </div>
-                  );
-                })}
+                    return (
+                      <div
+                        key={item.id + '-' + i}
+                        className="min-w-[240px] h-[160px] rounded-xl overflow-hidden shadow-md border border-white/10 bg-white/5 backdrop-blur-sm"
+                      >
+                        {isVideo ? (
+                          <video
+                            src={mediaUrl}
+                            className="w-full h-full object-cover"
+                            poster={posterUrl}
+                            muted
+                            loop
+                            playsInline
+                          />
+                        ) : (
+                          <img
+                            src={mediaUrl}
+                            className="w-full h-full object-cover"
+                            alt=""
+                            loading={i < 2 ? 'eager' : 'lazy'}
+                          />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             ) : (
               <Loader />
@@ -214,26 +216,31 @@ export default function Home() {
         </section>
       </LazyVisible>
 
-      {/* Video Block (lazy) */}
-      <LazyVisible minHeight={360} placeholder={<div className="aspect-video w-full max-w-6xl mx-auto px-4 rounded-2xl bg-gray-200" /> }>
-        <VideoBlock />
-      </LazyVisible>
-
-      {/* Recent Blogs (lazy, cached fallback) */}
-      <LazyVisible minHeight={420} placeholder={<div className="py-10"><Loader /></div>}>
-        <section className="py-10 bg-gray-50">
+      {/* BLOGS — tightened spacing, no internal waves; relies on page gradient */}
+      <LazyVisible minHeight={420} placeholder={<div className="py-6"><Loader /></div>}>
+        <section id="blogs" className="relative pt-4 pb-10">
           <div className="max-w-6xl mx-auto px-4">
             <div className="flex items-end justify-between mb-4">
-              <h2 className="text-xl md:text-2xl font-semibold">From the blog</h2>
-              <Link to="/blogs" className="text-sm text-blue-600 hover:underline">View all blogs</Link>
+              <h2 className="text-xl md:text-2xl font-semibold text-white/90">From the blog</h2>
+              <Link to="/blogs" className="text-sm text-blue-200 hover:text-white underline-offset-2 hover:underline">
+                View all blogs
+              </Link>
             </div>
+
             {blogs.status === 'failed' ? (
               <ErrorState message={blogs.error?.message || 'Failed to load blogs'} />
             ) : blogItems.length ? (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {blogItems.slice(0, 3).map((b) => (
-                  <BlogCard key={b.id || b.slug} item={b} />
-                ))}
+              <div className="overflow-hidden relative">
+                <div className="flex gap-5 marquee-slow">
+                  {[...blogItems, ...blogItems].map((b, i) => (
+                    <div
+                      key={(b.id || b.slug) + '-' + i}
+                      className="min-w-[300px] max-w-[300px] rounded-xl bg-white shadow-lg hover:shadow-xl border border-gray-100 overflow-hidden"
+                    >
+                      <BlogCard item={b} />
+                    </div>
+                  ))}
+                </div>
               </div>
             ) : (
               <Loader />
@@ -246,6 +253,17 @@ export default function Home() {
       <LazyVisible minHeight={240} placeholder={<div className="py-6" /> }>
         <InstagramFeed />
       </LazyVisible>
+
+      {/* Tiny shared CSS for light marquee animation only */}
+      <style>{`
+        @keyframes scrollHalf {
+          0% { transform: translateX(0); }
+          100% { transform: translateX(-50%); }
+        }
+        .marquee { animation: scrollHalf 18s linear infinite; }
+        .marquee-slow { animation: scrollHalf 22s linear infinite alternate; }
+        .marquee:hover, .marquee-slow:hover { animation-play-state: paused; }
+      `}</style>
     </div>
   );
 }

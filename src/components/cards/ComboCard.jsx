@@ -73,74 +73,122 @@ export default function ComboCard({ item }) {
     Number(item?.attraction_1_price || 0) + Number(item?.attraction_2_price || 0);
   const hasBase = baseSum > 0;
   const discountPercent =
-    hasBase && price > 0
-      ? Math.max(0, Math.round((1 - price / baseSum) * 100))
+    hasBase && price > 0 ? Math.max(0, Math.round((1 - price / baseSum) * 100))
       : Number(item?.discount_percent || 0);
 
   const numericComboId = item?.combo_id || item?.id || null;
   const bookHref = numericComboId ? `/booking?combo_id=${numericComboId}` : '/booking';
 
   return (
-    <div className="bg-white rounded-xl shadow hover:shadow-lg transition overflow-hidden border">
-      <div className="relative aspect-[4/3] bg-gray-100">
+    <div
+      className="
+        bg-white/95 backdrop-blur-md
+        rounded-2xl border border-white/40
+        shadow-[0_6px_20px_rgba(0,0,0,0.15)]
+        hover:shadow-[0_12px_30px_rgba(0,0,0,0.25)]
+        transition-all duration-500
+        overflow-hidden relative
+      "
+    >
+      <div className="relative aspect-[4/3] bg-gray-100 rounded-t-2xl overflow-hidden">
+
         <div className="grid grid-cols-2 h-full gap-0.5 md:gap-1">
-          {[left, right].map((attr, idx) => {
-            const isLink = Boolean(attr.href);
-            const className = 'relative block h-full w-full overflow-hidden group';
 
-            const content = (
-              <>
-                <img
-                  src={attr.image_url}
-                  alt={attr.title}
-                  className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
-                  loading="lazy"
-                  decoding="async"
-                  sizes="(min-width: 768px) 25vw, 50vw"
-                />
-                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent p-3">
-                  <p className="text-[10px] uppercase tracking-wide text-gray-200">
-                    {idx === 0 ? 'Experience 1' : 'Experience 2'}
-                  </p>
-                  <h4 className="text-sm md:text-base font-semibold text-white leading-tight line-clamp-2">
-                    {attr.title}
-                  </h4>
-                </div>
-              </>
-            );
+          {/* LEFT IMAGE — unchanged logic, premium UI */}
+          <div className="relative h-full w-full overflow-hidden group animate-left-in">
+            <img
+              src={left.image_url}
+              alt={left.title}
+              className="
+                h-full w-full object-cover
+                transition-transform duration-500
+                group-hover:scale-[1.08]
+                group-hover:brightness-110
+              "
+              loading="lazy"
+            />
+            <div className="
+              absolute inset-x-0 bottom-0 
+              bg-gradient-to-t from-black/75 via-black/20 to-transparent
+              p-3 backdrop-blur-[2px]
+            ">
+              <p className="text-[11px] tracking-wide text-gray-200">Experience 1</p>
+              <h4 className="text-sm font-semibold text-white leading-tight line-clamp-2">
+                {left.title}
+              </h4>
+            </div>
+          </div>
 
-            return isLink ? (
-              <Link key={`img-${idx}`} className={className} to={attr.href}>
-                {content}
-              </Link>
-            ) : (
-              <div key={`img-${idx}`} className={className}>
-                {content}
-              </div>
-            );
-          })}
+          {/* RIGHT IMAGE — unchanged logic */}
+          <div className="relative h-full w-full overflow-hidden group animate-right-in">
+            <img
+              src={right.image_url}
+              alt={right.title}
+              className="
+                h-full w-full object-cover
+                transition-transform duration-500
+                group-hover:scale-[1.08]
+                group-hover:brightness-110
+              "
+              loading="lazy"
+            />
+            <div className="
+              absolute inset-x-0 bottom-0 
+              bg-gradient-to-t from-black/75 via-black/20 to-transparent
+              p-3 backdrop-blur-[2px]
+            ">
+              <p className="text-[11px] tracking-wide text-gray-200">Experience 2</p>
+              <h4 className="text-sm font-semibold text-white leading-tight line-clamp-2">
+                {right.title}
+              </h4>
+            </div>
+          </div>
         </div>
 
+        {/* Plus icon */}
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <span className="h-8 w-8 md:h-10 md:w-10 rounded-full bg-white/90 text-indigo-700 font-bold shadow border flex items-center justify-center">
+          <span
+            className="
+              h-10 w-10 rounded-full bg-white/90 text-indigo-700
+              text-lg font-bold shadow border flex items-center justify-center
+            "
+          >
             +
           </span>
         </div>
-        <span className="absolute top-2 left-2 text-[10px] md:text-xs text-white bg-emerald-600 px-2 py-1 rounded-full">
+
+        {/* Combo tag */}
+        <span
+          className="
+            absolute top-2 left-2 px-2 py-1
+            bg-emerald-600 text-white text-[11px] rounded-full shadow
+          "
+        >
           Combo
         </span>
 
-        {price > 0 ? (
-          <div className="absolute bottom-2 left-2 rounded-full bg-black/70 text-white px-3 py-1 text-xs md:text-sm">
+        {/* Price */}
+        {price > 0 && (
+          <div
+            className="
+              absolute bottom-2 left-2 px-3 py-1
+              rounded-full bg-black/70 backdrop-blur-md
+              text-white text-xs shadow
+            "
+          >
             <span className="font-semibold">{formatCurrency(price)}</span>
             <span className="opacity-80"> per combo</span>
           </div>
-        ) : null}
+        )}
       </div>
 
+      {/* CONTENT SECTION */}
       <div className="p-4">
-        <h3 className="font-semibold text-gray-800 line-clamp-1">{title}</h3>
-        {desc ? <p className="text-sm text-gray-600 line-clamp-2 mt-1">{desc}</p> : null}
+        <h3 className="font-semibold text-gray-900 text-lg line-clamp-1 tracking-tight">
+          {title}
+        </h3>
+
+        {desc ? <p className="text-sm text-gray-600 mt-1 line-clamp-2">{desc}</p> : null}
 
         <div className="mt-2 text-xs text-gray-500 flex flex-wrap gap-2">
           <span>{left.title}</span>
@@ -148,44 +196,67 @@ export default function ComboCard({ item }) {
           <span>{right.title}</span>
         </div>
 
-        {hasBase ? (
-          <div className="mt-2 flex items-baseline gap-2">
-            <div className="text-sm line-through text-gray-400">{formatCurrency(baseSum)}</div>
-            <div className="text-sm text-green-700 font-medium">
+        {hasBase && (
+          <div className="mt-2 flex items-baseline gap-2 text-sm">
+            <div className="line-through text-gray-400">{formatCurrency(baseSum)}</div>
+            <div className="text-green-700 font-semibold">
               {discountPercent > 0 ? `Save ${discountPercent}%` : 'Combo pricing'}
             </div>
           </div>
-        ) : null}
+        )}
 
+        {/* Buttons */}
         <div className="mt-3 flex items-center gap-3">
           <Link
             to={comboId ? `/combos/${comboId}` : '/combos'}
-            className="text-sm text-blue-600 hover:underline"
+            className="text-sm text-blue-600 font-medium hover:text-blue-800 transition"
           >
-            View Combo
+            View Combo →
           </Link>
+
           <Link
             to={bookHref}
-            className="inline-flex items-center rounded-full bg-blue-600 px-4 py-2 text-white text-sm hover:bg-blue-700"
-            title="Book this combo"
+            className="
+              inline-flex items-center rounded-full
+              bg-blue-600 px-4 py-2 text-white text-sm
+              hover:bg-blue-700 active:scale-95 transition-all shadow-sm
+            "
           >
             Book Now
           </Link>
         </div>
 
-        <div className="mt-3 flex flex-wrap gap-3 text-xs text-blue-600">
+        {/* Extra links */}
+        <div className="mt-3 flex flex-wrap gap-3 text-xs text-blue-600 font-medium">
           {left.href ? (
-            <Link to={left.href} className="hover:underline">
-              View {left.title}
-            </Link>
+            <Link to={left.href} className="hover:underline">View {left.title}</Link>
           ) : null}
           {right.href ? (
-            <Link to={right.href} className="hover:underline">
-              View {right.title}
-            </Link>
+            <Link to={right.href} className="hover:underline">View {right.title}</Link>
           ) : null}
         </div>
       </div>
+
+      {/* ANIMATIONS — DO NOT TOUCH LOGIC */}
+      <style>{`
+        @keyframes leftFullIn {
+          0% { opacity: 0; transform: translateX(-120vw) rotate(-45deg); }
+          80% { opacity: 1; transform: translateX(12px) rotate(-5deg); }
+          100% { opacity: 1; transform: translateX(0) rotate(0deg); }
+        }
+        .animate-left-in {
+          animation: leftFullIn 1s cubic-bezier(.18,.89,.32,1.28) forwards;
+        }
+
+        @keyframes rightFullIn {
+          0% { opacity: 0; transform: translateX(120vw) rotate(45deg); }
+          80% { opacity: 1; transform: translateX(-12px) rotate(5deg); }
+          100% { opacity: 1; transform: translateX(0) rotate(0deg); }
+        }
+        .animate-right-in {
+          animation: rightFullIn 1s cubic-bezier(.18,.89,.32,1.28) forwards;
+        }
+      `}</style>
     </div>
   );
 }

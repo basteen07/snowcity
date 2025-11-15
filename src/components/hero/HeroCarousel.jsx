@@ -6,7 +6,8 @@ import "swiper/css/pagination";
 import "swiper/css/effect-fade";
 import { imgSrc } from "../../utils/media";
 
-// Robust field getters so your API can use multiple names
+/* ---------------- HELPERS ---------------- */
+
 const getWebImage = (b, fallback) =>
   imgSrc(
     b?.web_image ||
@@ -28,7 +29,6 @@ const getMobileImage = (b, fallback) =>
       fallback
   );
 
-// Link derivation: explicit link > attraction > offer > combo
 function deriveHref(b) {
   const link = b?.link_url || b?.url || b?.href;
   if (link && link !== "#") return link;
@@ -49,103 +49,175 @@ function deriveHref(b) {
   return null;
 }
 
-export default function HeroCarousel({ banners = [] }) {
+/* ---------------- COMPONENT ---------------- */
+
+export default function HeroCarousel({ banners = [], waveColor = "#0b1a33" }) {
   if (!banners.length) return null;
 
   return (
-    <section className="relative w-full overflow-hidden">
+    <section id="hero" className="relative w-full overflow-hidden">
+      {/* Bottom sentinel so navbar knows when hero ends */}
+      <span id="hero-sentinel" className="pointer-events-none absolute bottom-0 left-0 h-px w-px" />
+
+      {/* SWIPER */}
       <Swiper
         modules={[Autoplay, Pagination, EffectFade, Parallax]}
         slidesPerView={1}
         loop
         autoplay={{ delay: 5000, disableOnInteraction: false }}
         effect="fade"
-        parallax={true}
+        parallax
         speed={900}
         pagination={{
           clickable: true,
           bulletClass:
-            "swiper-pagination-bullet !bg-white/90 hover:!bg-blue-500 !w-2.5 !h-2.5 !opacity-100 transition-all",
+            "swiper-pagination-bullet !bg-white/80 hover:!bg-blue-400 !w-2.5 !h-2.5 !opacity-100 transition-all",
         }}
-        className="h-[65vh] sm:h-[75vh] md:h-[90vh]"
+        className="
+          h-[100vh]      /* full mobile height */
+          sm:h-[80vh]
+          md:h-[90vh]
+          relative
+        "
       >
         {banners.map((b, idx) => {
-          const desktopImg = getWebImage(
-            b,
-            `https://picsum.photos/seed/banner${idx}/1400/700`
-          );
-          const mobileImg = getMobileImage(
-            b,
-            `https://picsum.photos/seed/banner${idx}-m/600/800`
-          );
+          const desktopImg = getWebImage(b, `https://picsum.photos/seed/banner${idx}/1400/700`);
+          const mobileImg = getMobileImage(b, `https://picsum.photos/seed/banner${idx}-m/600/800`);
           const title = b?.title || b?.name || "";
           const href = deriveHref(b);
 
           return (
             <SwiperSlide key={b?.id || b?.banner_id || idx}>
               <div className="relative w-full h-full">
-                {/* Image layer with parallax + Ken Burns + boosted color */}
-                <div
-                  className="absolute inset-0"
-                  data-swiper-parallax="-20%"
-                  data-swiper-parallax-opacity="0.9"
-                >
+                {/* BACKGROUND IMAGE */}
+                <div className="absolute inset-0" data-swiper-parallax="-20%">
                   <picture>
-                    {/* Mobile first */}
                     <source media="(max-width: 767px)" srcSet={mobileImg} />
-                    {/* Default desktop */}
                     <img
                       src={desktopImg}
                       alt={title || "Banner"}
-                      className="w-full h-full object-cover object-center will-change-transform animate-kenburns brightness-110 contrast-110 saturate-115"
+                      className="
+                        w-full h-full object-cover object-center
+                        will-change-transform animate-kenburns
+                        brightness-110 contrast-110 saturate-110
+                      "
                       loading={idx === 0 ? "eager" : "lazy"}
-                      fetchpriority={idx === 0 ? "high" : "auto"}
+                      fetchPriority={idx === 0 ? "high" : "auto"}
                       decoding="async"
                       sizes="100vw"
-                      draggable="false"
                     />
                   </picture>
                 </div>
 
-                {/* Lighter gradient overlay (no faded look) */}
-                <div className="absolute inset-0 bg-gradient-to-t from-black/35 via-black/10 to-transparent pointer-events-none" />
+                {/* OVERLAY GRADIENT */}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-black/25 to-transparent" />
 
-                {/* Title/CTA layer with stronger drop-shadow for readability */}
+                {/* TITLE BLOCK */}
                 {title ? (
                   <div
-                    className="absolute inset-x-0 bottom-14 sm:bottom-20 text-center text-white px-4 z-10"
-                    data-swiper-parallax="-250"
+                    className="absolute inset-x-0 bottom-24 text-center text-white px-4 z-10"
+                    data-swiper-parallax="-200"
                   >
-                    <h2 className="text-3xl sm:text-5xl font-extrabold mb-3 [text-shadow:_0_2px_12px_rgba(0,0,0,0.55)] drop-shadow-2xl">
+                    <h2 className="text-3xl sm:text-5xl font-extrabold mb-4 drop-shadow-2xl">
                       {title}
                     </h2>
+
                     {href ? (
                       <a
                         href={href}
-                        className="inline-flex items-center justify-center mt-2 px-6 py-2.5 bg-blue-600 text-white font-medium rounded-full text-sm sm:text-base hover:bg-blue-700 transition-all duration-300 shadow-xl [box-shadow:0_10px_24px_rgba(37,99,235,0.35)]"
+                        className="
+                          inline-flex items-center justify-center
+                          mt-2 px-6 py-3
+                          text-white text-base font-semibold
+                          rounded-full
+                          bg-white/10 backdrop-blur-md border border-white/30
+                          hover:bg-white/20
+                          shadow-xl transition-all
+                          animate-cta
+                        "
                       >
-                        Discover More →
+                        Explore Now →
                       </a>
                     ) : null}
                   </div>
                 ) : null}
 
-                {/* Make whole slide clickable if href exists */}
-                {href ? (
-                  <a
-                    href={href}
-                    aria-label={title || "View"}
-                    className="absolute inset-0 z-0"
-                  />
-                ) : null}
+                {/* CLICKABLE WHOLE SLIDE (behind CTA) */}
+                {href ? <a href={href} className="absolute inset-0 z-0" aria-label={title || "Banner"} /> : null}
               </div>
             </SwiperSlide>
           );
         })}
       </Swiper>
 
-      {/* Ken Burns + extra styles */}
-     
+      {/* Layered wave footer blending into next section */}
+      <div className="absolute -bottom-px inset-x-0 h-24 pointer-events-none z-[30]">
+        {/* soft gradient merge */}
+        <div
+          className="absolute inset-0"
+          style={{
+            background: `linear-gradient(to bottom, rgba(0,0,0,0) 0%, ${waveColor} 85%)`,
+          }}
+        />
+
+        {/* Back wave */}
+        <svg
+          className="absolute bottom-0 left-0 w-full h-16 opacity-70 animate-wave-slow"
+          viewBox="0 0 1440 320"
+          preserveAspectRatio="none"
+        >
+          <path
+            fill={waveColor}
+            d="
+              M0,256
+              C240,280 480,270 720,240
+              C960,210 1200,150 1440,160
+              V320H0Z
+            "
+          />
+        </svg>
+
+        {/* Front wave */}
+        <svg
+          className="absolute bottom-0 left-0 w-full h-18 animate-wave"
+          viewBox="0 0 1440 320"
+          preserveAspectRatio="none"
+        >
+          <path
+            fill={waveColor}
+            d="
+              M0,240
+              C200,270 400,260 600,230
+              C800,200 1000,140 1200,160
+              C1350,180 1440,230 1440,260
+              V320H0Z
+            "
+          />
+        </svg>
+      </div>
+
+      {/* ANIMATIONS */}
+      <style>{`
+        /* Kenburns slow zoom */
+        @keyframes kenburns {
+          0% { transform: scale(1); }
+          100% { transform: scale(1.08); }
+        }
+        .animate-kenburns {
+          animation: kenburns 14s ease-out forwards;
+        }
+
+        /* CTA gentle float */
+        @keyframes floatY {
+          0% { transform: translateY(0); }
+          50% { transform: translateY(2px); }
+          100% { transform: translateY(0); }
+        }
+        .animate-cta {
+          animation: floatY 3.5s ease-in-out infinite;
+        }
+
+    `}</style>
     </section>
   );
 }
