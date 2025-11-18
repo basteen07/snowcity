@@ -23,8 +23,8 @@ export default function Footer() {
         y: Math.random() * H,
         r: 1 + Math.random() * 3,
         d: Math.random() + 1,
-        speedX: 0.5 + Math.random() * 1.5, // wind
-        speedY: 0.8 + Math.random() * 1.6, // gravity
+        speedX: 0.5 + Math.random() * 1.5,
+        speedY: 0.8 + Math.random() * 1.6,
       });
     }
 
@@ -43,14 +43,10 @@ export default function Footer() {
 
     function update() {
       flakes.forEach((f) => {
-        // wind + fall
         f.x += f.speedX;
         f.y += f.speedY;
-
-        // sway motion
         f.x += Math.sin(f.y * 0.02) * 0.4;
 
-        // reset when leaving screen
         if (f.y > H || f.x > W + 20) {
           f.x = Math.random() * W;
           f.y = -10;
@@ -94,7 +90,7 @@ export default function Footer() {
         className="absolute inset-0 w-full h-[260px] z-10 pointer-events-none"
       ></canvas>
 
-      {/* Snowman (Your PNG) */}
+      {/* Snowman */}
       <div className="absolute right-4 bottom-6 z-20">
         <img
           src={Snowman}
@@ -106,6 +102,8 @@ export default function Footer() {
       {/* FOOTER CONTENT */}
       <div className="relative z-30 max-w-6xl mx-auto px-5 py-16">
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-10">
+          
+          {/* Logo + Description */}
           <div>
             <div className="flex items-center gap-3 mb-3">
               <img src={Logo} alt="SnowCity" className="h-12 w-auto object-contain" />
@@ -115,6 +113,7 @@ export default function Footer() {
             </p>
           </div>
 
+          {/* Explore */}
           <div>
             <h4 className="text-white font-semibold mb-3">Explore</h4>
             <ul className="space-y-2 text-sm text-gray-300/85">
@@ -125,6 +124,7 @@ export default function Footer() {
             </ul>
           </div>
 
+          {/* Visitor Guide */}
           <div>
             <h4 className="text-white font-semibold mb-3">Visitor Guide</h4>
             <ul className="space-y-2 text-sm text-gray-300/85">
@@ -134,6 +134,7 @@ export default function Footer() {
             </ul>
           </div>
 
+          {/* Information — ADMIN DASHBOARD ADDED */}
           <div>
             <h4 className="text-white font-semibold mb-3">Information</h4>
             <ul className="space-y-2 text-sm text-gray-300/85">
@@ -141,8 +142,16 @@ export default function Footer() {
               <li><Link to="/contact" className="hover:text-white">Contact</Link></li>
               <li><Link to="/page/privacy-policy" className="hover:text-white">Privacy Policy</Link></li>
               <li><Link to="/page/terms-and-conditions" className="hover:text-white">Terms & Conditions</Link></li>
+
+              {/* ⭐ NEW ADMIN DASHBOARD LINK */}
+              <li>
+                <Link to="/admin" className="hover:text-white font-semibold text-blue-300">
+                  Admin Dashboard
+                </Link>
+              </li>
             </ul>
           </div>
+
         </div>
 
         <div className="mt-12 border-t border-white/10 pt-6 flex flex-col md:flex-row items-center justify-between text-sm text-gray-400">
@@ -156,16 +165,12 @@ export default function Footer() {
 
       {/* EXTRA STYLES */}
       <style>{`
-        /* Wave animation */
         @keyframes waveMove {
           0% { transform: translateX(0); }
           100% { transform: translateX(-8%); }
         }
-        .animate-waveSlow {
-          animation: waveMove 12s linear infinite;
-        }
+        .animate-waveSlow { animation: waveMove 12s linear infinite; }
 
-        /* Snowman float */
         @keyframes floatSnow {
           0%,100% { transform: translateY(0); }
           50% { transform: translateY(-6px); }
@@ -174,6 +179,7 @@ export default function Footer() {
           animation: floatSnow 4s ease-in-out infinite;
         }
       `}</style>
+
     </footer>
   );
 }

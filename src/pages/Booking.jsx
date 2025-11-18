@@ -9,7 +9,9 @@ import { imgSrc } from '../utils/media';
 import {
   setStep, setContact, setCouponCode,
   sendAuthOtp, verifyAuthOtp, applyCoupon,
-  createBooking, initiatePayPhi
+  createBooking, initiatePayPhi,
+  addCartItem, removeCartItem, resetCart,
+  setActiveCartItem, updateCartItemQuantity
 } from '../features/bookings/bookingsSlice';
 
 import { fetchAttractions } from '../features/attractions/attractionsSlice';
@@ -54,6 +56,17 @@ const getAddonImage = (addon) => {
 };
 const getAddonDescription = (addon) => addon?.short_description ?? addon?.subtitle ?? addon?.description ?? '';
 const clampQty = (qty, min = 0, max = 10) => Math.min(Math.max(qty, min), max);
+
+const createDefaultSelection = () => ({
+  itemType: 'attraction',
+  attractionId: '',
+  comboId: '',
+  date: todayYMD(),
+  slotKey: '',
+  qty: 1,
+});
+
+const makeLocalCartKey = () => `sel_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
 
 const getComboLabel = (combo, fallbackId = null) => {
   if (!combo) return fallbackId ? `Combo ${fallbackId}` : 'Combo';
@@ -114,16 +127,22 @@ export default function Booking() {
   const attractionsState = useSelector((s) => s.attractions);
   const combosState = useSelector((s) => s.combos);
   const addonsState = useSelector((s) => s.addons);
-  const { step, contact, otp, coupon, creating, payphi } = useSelector((s) => s.bookings);
+  const { step, contact, otp, coupon, creating, payphi, cart } = useSelector((s) => s.bookings);
+  const cartItems = cart?.items || [];
+  const hasCartItems = cartItems.length > 0;
+  const activeKey = cart?.activeKey;
+  const checkoutItem = React.useMemo(() => {
+    if (!cartItems.length) return null;
+    if (activeKey) {
+      const found = cartItems.find((item) => item.key === activeKey);
+      if (found) return found;
+    }
+    return cartItems[0];
+  }, [cartItems, activeKey]);
 
-  const [sel, setSel] = React.useState({
-    itemType: 'attraction', // 'attraction' | 'combo'
-    attractionId: '',
-    comboId: '',
-    date: todayYMD(),
-    slotKey: '',
-    qty: 1,
-  });
+  const [sel, setSel] = React.useState(() => createDefaultSelection());
+  const [editingKey, setEditingKey] = React.useState(null);
+  const [pendingSlotMatch, setPendingSlotMatch] = React.useState(null);
   const [slots, setSlots] = React.useState({
     status: 'idle',
     items: [],
@@ -174,6 +193,16 @@ export default function Booking() {
   React.useEffect(() => {
     if (step === 2 && hasToken) dispatch(setStep(3));
   }, [step, hasToken, dispatch]);
+
+  React.useEffect(() => {
+    dispatch(resetCart());
+  }, [dispatch]);
+
+  React.useEffect(() => {
+    if (step > 1 && !hasCartItems) {
+      dispatch(setStep(1));
+    }
+  }, [step, hasCartItems, dispatch]);
 
   // Preselect via querystring
   React.useEffect(() => {
@@ -270,11 +299,57 @@ export default function Booking() {
     return { title: '', price: 0 };
   }, [sel.itemType, selectedCombo, selectedAttraction, selectedSlot]);
 
-  // Totals for UI (server re-computes final)
   const qty = Math.max(1, Number(sel.qty) || 1);
   const ticketsSubtotal = Number(selectedMeta.price || 0) * qty;
+  const selectionReady = Boolean(selectedMeta.title && sel.date && sel.slotKey && qty);
+  const selectionPayload = React.useMemo(() => {
+    if (!selectionReady) return null;
+    const item_type = sel.itemType === 'combo' ? 'Combo' : 'Attraction';
+    const slotId = sel.itemType === 'combo'
+      ? (selectedSlot?.combo_slot_id ?? selectedSlot?.id ?? selectedSlot?._id ?? null)
+      : (selectedSlot?.slot_id ?? selectedSlot?.id ?? selectedSlot?._id ?? null);
+    const title = selectedMeta.title;
+    const slotLabel = selectedSlot ? getSlotLabel(selectedSlot) : '';
+    const base = {
+      item_type,
+      title,
+      slotLabel,
+      quantity: qty,
+      booking_date: toYMD(sel.date),
+      unitPrice: selectedMeta.price || 0,
+      dateLabel: toYMD(sel.date),
+      slot_id: item_type === 'Attraction' ? slotId : null,
+      combo_slot_id: item_type === 'Combo' ? slotId : null,
+      attraction_id: item_type === 'Attraction' ? getAttrId(selectedAttraction) : null,
+      combo_id: item_type === 'Combo' ? getComboId(selectedCombo) : null,
+      slot: selectedSlot || null,
+      attraction: selectedAttraction || null,
+      combo: selectedCombo || null,
+    };
+    return base;
+  }, [selectionReady, sel.itemType, sel.date, selectedMeta, selectedSlot, selectedAttraction, selectedCombo, qty]);
+
+  const addSelectionToCart = React.useCallback(() => {
+    if (!selectionPayload) {
+      alert('Complete item selection before continuing.');
+      return false;
+    }
+    const newKey = editingKey || makeLocalCartKey();
+    const payload = { ...selectionPayload, key: newKey, merge: false };
+    if (editingKey) {
+      dispatch(removeCartItem(editingKey));
+    }
+    dispatch(addCartItem(payload));
+    dispatch(setActiveCartItem(newKey));
+    setEditingKey(null);
+    setPendingSlotMatch(null);
+    setSel(createDefaultSelection());
+    return true;
+  }, [selectionPayload, editingKey, dispatch]);
+
+  const activeTicketsSubtotal = checkoutItem ? Number(checkoutItem.unitPrice || 0) * Number(checkoutItem.quantity || 0) : 0;
   const addonsSubtotal = Array.from(selectedAddons.values()).reduce((sum, a) => sum + (Number(a.price || 0) * Number(a.quantity || 0)), 0);
-  const grossTotal = ticketsSubtotal + addonsSubtotal;
+  const grossTotal = activeTicketsSubtotal + addonsSubtotal;
   const discount = Number(coupon.discount || 0);
   const finalTotal = Math.max(0, grossTotal - discount);
 
@@ -303,8 +378,14 @@ export default function Booking() {
   // Checkout: create booking -> initiate PayPhi
   const onPlaceOrderAndPay = async () => {
     if (!hasToken) { alert('Please verify OTP to proceed.'); return; }
-    if (!sel.date || !sel.slotKey || !qty || (!selectedAttraction && !selectedCombo)) {
-      alert('Please complete selection (item, date, slot, quantity).');
+    if (!hasCartItems) {
+      alert('Add at least one item in Step 1 before continuing.');
+      return;
+    }
+
+    const primaryItem = checkoutItem || cartItems[0];
+    if (!primaryItem) {
+      alert('No items to book.');
       return;
     }
 
@@ -315,28 +396,26 @@ export default function Booking() {
         .map((a) => ({ addon_id: a.addon_id, quantity: Number(a.quantity) }));
 
       // Build payload
-      const item_type = sel.itemType === 'combo' ? 'Combo' : 'Attraction';
+      const item_type = primaryItem.item_type === 'Combo' ? 'Combo' : 'Attraction';
       let payload;
-      if (sel.itemType === 'combo') {
-        const comboSlotId = selectedSlot?.combo_slot_id ?? selectedSlot?.id ?? selectedSlot?._id ?? null;
+      if (item_type === 'Combo') {
         payload = {
           item_type,
-          combo_id: getComboId(selectedCombo),
-          combo_slot_id: comboSlotId,
-          booking_date: toYMD(sel.date),
-          quantity: qty,
+          combo_id: primaryItem.combo_id,
+          combo_slot_id: primaryItem.combo_slot_id,
+          booking_date: primaryItem.booking_date,
+          quantity: primaryItem.quantity,
           addons: addonsPayload,
           coupon_code: (coupon?.code || '').trim() || undefined,
           offer_id: selectedOfferId ? Number(selectedOfferId) : undefined
         };
       } else {
-        const slotId = selectedSlot?.slot_id ?? selectedSlot?.id ?? selectedSlot?._id ?? null;
         payload = {
           item_type,
-          attraction_id: getAttrId(selectedAttraction),
-          slot_id: slotId,
-          booking_date: toYMD(sel.date),
-          quantity: qty,
+          attraction_id: primaryItem.attraction_id,
+          slot_id: primaryItem.slot_id,
+          booking_date: primaryItem.booking_date,
+          quantity: primaryItem.quantity,
           addons: addonsPayload,
           coupon_code: (coupon?.code || '').trim() || undefined,
           offer_id: selectedOfferId ? Number(selectedOfferId) : undefined
@@ -369,6 +448,63 @@ export default function Booking() {
       showPayphiError('Payment initiation failed', err);
     }
   };
+
+  const onRemoveCartItem = (key) => {
+    dispatch(removeCartItem(key));
+    if (editingKey === key) {
+      setEditingKey(null);
+      setSel(createDefaultSelection());
+      setPendingSlotMatch(null);
+    }
+  };
+
+  const onEditCartItem = (item) => {
+    const itemType = item.item_type === 'Combo' ? 'combo' : 'attraction';
+    const slotId = itemType === 'combo' ? item.combo_slot_id : item.slot_id;
+    setSel({
+      itemType,
+      attractionId: item.attraction_id ? String(item.attraction_id) : '',
+      comboId: item.combo_id ? String(item.combo_id) : '',
+      date: item.booking_date || todayYMD(),
+      slotKey: '',
+      qty: Number(item.quantity || 1),
+    });
+    setEditingKey(item.key);
+    setPendingSlotMatch(slotId ? { slotId: String(slotId), itemType } : null);
+    dispatch(setActiveCartItem(item.key));
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const onQuantityInput = (key, value) => {
+    const parsed = Math.max(1, Number(value) || 1);
+    dispatch(updateCartItemQuantity({ key, quantity: parsed }));
+  };
+
+  const ensureCartThenContinue = () => {
+    if (!hasCartItems) {
+      const ok = addSelectionToCart();
+      if (!ok) return;
+    }
+    dispatch(setStep(hasToken ? 3 : 2));
+  };
+
+  React.useEffect(() => {
+    if (!pendingSlotMatch || !slots.items.length) return;
+    const { slotId, itemType } = pendingSlotMatch;
+    if (!slotId) { setPendingSlotMatch(null); return; }
+    for (let i = 0; i < slots.items.length; i += 1) {
+      const slot = slots.items[i];
+      const rawId = itemType === 'combo'
+        ? (slot?.combo_slot_id ?? slot?.id ?? slot?._id)
+        : (slot?.slot_id ?? slot?.id ?? slot?._id);
+      if (String(rawId) === String(slotId)) {
+        const key = getSlotKey(slot, i);
+        setSel((prev) => ({ ...prev, slotKey: key }));
+        setPendingSlotMatch(null);
+        break;
+      }
+    }
+  }, [pendingSlotMatch, slots.items]);
 
   const showPayphiError = (prefix = 'Payment initiation failed', payload = null) => {
     const code =
@@ -673,14 +809,72 @@ export default function Booking() {
             </div>
           </div>
 
-          <div className="mt-6 flex justify-end">
+          <div className="mt-6 flex flex-col gap-3">
             <button
-              className="inline-flex items-center rounded-full bg-blue-600 px-6 py-2 text-white text-sm hover:bg-blue-700 disabled:opacity-50"
-              disabled={!selectedMeta.title || !sel.date || !sel.slotKey || !qty}
-              onClick={() => dispatch(setStep(hasToken ? 3 : 2))}
+              type="button"
+              className="inline-flex items-center rounded-full border px-6 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
+              onClick={addSelectionToCart}
+              disabled={!selectionReady}
             >
-              Continue
+              Add to order
             </button>
+            {hasCartItems ? (
+              <div className="rounded-xl border p-4 text-sm space-y-3">
+                <div className="font-semibold mb-1">Saved selections</div>
+                {cartItems.map((item) => {
+                  const isActive = checkoutItem?.key === item.key;
+                  const total = Number(item.unitPrice || 0) * Number(item.quantity || 0);
+                  return (
+                    <div
+                      key={item.key}
+                      className={`rounded-lg border p-3 flex flex-col gap-2 ${isActive ? 'border-blue-500 bg-blue-50/40' : 'border-gray-200'}`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="font-medium">{item.title || item.item_type}</div>
+                          <div className="text-xs text-gray-500">{item.dateLabel} · {item.slotLabel || 'Slot'}</div>
+                        </div>
+                        <div className="text-sm font-semibold">₹{total}</div>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-3 text-xs text-gray-600">
+                        <label className="flex items-center gap-1">
+                          Qty
+                          <input
+                            type="number"
+                            min="1"
+                            value={item.quantity}
+                            onChange={(e) => onQuantityInput(item.key, e.target.value)}
+                            className="w-16 rounded-md border px-2 py-1 text-sm"
+                          />
+                        </label>
+                        <button className="text-blue-600 hover:underline" onClick={() => onEditCartItem(item)}>
+                          Edit
+                        </button>
+                        <button className="text-red-600 hover:underline" onClick={() => onRemoveCartItem(item.key)}>
+                          Remove
+                        </button>
+                        {!isActive ? (
+                          <button className="text-gray-700 hover:underline" onClick={() => dispatch(setActiveCartItem(item.key))}>
+                            Mark Active
+                          </button>
+                        ) : (
+                          <span className="text-blue-600 font-medium">Active</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
+            <div className="flex justify-end">
+              <button
+                className="inline-flex items-center rounded-full bg-blue-600 px-6 py-2 text-white text-sm hover:bg-blue-700 disabled:opacity-50"
+                disabled={!hasCartItems && !selectionReady}
+                onClick={ensureCartThenContinue}
+              >
+                Continue
+              </button>
+            </div>
           </div>
         </section>
       )}
@@ -753,14 +947,16 @@ export default function Booking() {
           <div className="rounded-xl border p-4 mb-6">
             <h3 className="font-semibold mb-3">Order Summary</h3>
             <div className="space-y-2 text-sm">
-              {selectedMeta.title ? (
+              {checkoutItem ? (
                 <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-1">
                   <div className="text-gray-700">
-                    {selectedMeta.title} — {toYMD(sel.date)} — {qty} ticket(s)
+                    {checkoutItem.title || checkoutItem.item_type} — {checkoutItem.dateLabel} — {checkoutItem.quantity} ticket(s)
                   </div>
-                  <div className="font-medium">₹{ticketsSubtotal}</div>
+                  <div className="font-medium">₹{Number(checkoutItem.unitPrice || 0) * Number(checkoutItem.quantity || 0)}</div>
                 </div>
-              ) : null}
+              ) : (
+                <div className="text-sm text-gray-500">No selection yet.</div>
+              )}
               {selectedAddons.size > 0 && (
                 <div className="mt-2 text-sm text-gray-700">
                   Add-ons total: ₹{addonsSubtotal}
@@ -805,10 +1001,7 @@ export default function Booking() {
                 creating.status === 'loading' ||
                 payphi.status === 'loading' ||
                 !hasToken ||
-                !selectedMeta.title ||
-                !sel.date ||
-                !sel.slotKey ||
-                !qty
+                !hasCartItems
               }
             >
               {(creating.status === 'loading' || payphi.status === 'loading') ? 'Processing…' : 'Place order & Pay'}

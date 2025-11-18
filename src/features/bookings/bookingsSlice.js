@@ -114,8 +114,14 @@ const normalizeBookingEntity = (raw) => {
   return { entity: b, id, ref };
 };
 
-const initialState = {
+const createInitialState = () => ({
   step: 1,
+
+  cart: {
+    items: [],
+    totalQuantity: 0,
+    activeKey: null,
+  },
 
   // Contact details (helpful for forms and PayPhi initiate)
   contact: { name: '', email: '', phone: '' },
@@ -142,6 +148,31 @@ const initialState = {
   // Listings and status checks
   list: { status: 'idle', items: [], meta: null, error: null },
   statusCheck: { status: 'idle', success: false, response: null, error: null }
+});
+
+const initialState = createInitialState();
+
+const makeCartItemId = () => `ci_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+
+const buildFingerprint = (payload = {}) => {
+  const parts = [
+    payload.item_type || payload.itemType || 'Attraction',
+    payload.attraction_id || payload.attractionId || 'na',
+    payload.combo_id || payload.comboId || 'na',
+    payload.slot_id || payload.slotId || 'na',
+    payload.combo_slot_id || payload.comboSlotId || 'na',
+    payload.booking_date || payload.date || 'na'
+  ];
+  return parts.join(':');
+};
+
+const recomputeCartMeta = (cart) => {
+  cart.totalQuantity = cart.items.reduce((sum, it) => sum + Number(it.quantity || 0), 0);
+  if (!cart.items.length) {
+    cart.activeKey = null;
+  } else if (!cart.activeKey || !cart.items.some((it) => it.key === cart.activeKey)) {
+    cart.activeKey = cart.items[0].key;
+  }
 };
 
 /* ============ Thunks ============ */
@@ -222,6 +253,17 @@ export const createBooking = createAsyncThunk(
   'bookings/createBooking',
   async (payload, { rejectWithValue }) => {
     try {
+      if (Array.isArray(payload)) {
+        const body = payload.map((item) => normalizeBookingCreatePayload(item));
+        const res = await api.post(endpoints.bookings.create(), body);
+        const rows = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
+        const bookings = rows.map((row) => {
+          const { entity, id, ref } = normalizeBookingEntity(row);
+          return { booking: entity, booking_id: id, booking_ref: ref };
+        });
+        return { bookings };
+      }
+
       const body = normalizeBookingCreatePayload(payload);
       const res = await api.post(endpoints.bookings.create(), body);
       const { entity, id, ref } = normalizeBookingEntity(res);
@@ -278,14 +320,76 @@ const bookingsSlice = createSlice({
   reducers: {
     setStep(state, action) { state.step = Number(action.payload) || 1; },
     setContact(state, action) { state.contact = { ...state.contact, ...(action.payload || {}) }; },
-    resetBookingFlow: () => initialState,
+    resetBookingFlow: () => createInitialState(),
     setCouponCode(state, action) {
       state.coupon.code = (action.payload || '').trim();
       state.coupon.discount = 0;
       state.coupon.data = null;
       state.coupon.status = 'idle';
       state.coupon.error = null;
-    }
+    },
+    addCartItem(state, action) {
+      const payload = action.payload || {};
+      const fingerprint = payload.fingerprint || buildFingerprint(payload);
+      const qty = Math.max(1, Number(payload.quantity || payload.qty || 1));
+      const unitPrice = Number(payload.unitPrice || payload.price || payload.unit_price || 0);
+      const allowMerge = payload.merge === undefined ? true : !!payload.merge;
+      const existing = allowMerge ? state.cart.items.find((it) => it.fingerprint === fingerprint) : null;
+      if (existing) {
+        existing.quantity += qty;
+        existing.unitPrice = unitPrice || existing.unitPrice || 0;
+        existing.booking_date = payload.booking_date || payload.date || existing.booking_date || null;
+        existing.slotLabel = payload.slotLabel || existing.slotLabel || '';
+        existing.title = payload.title || existing.title || '';
+      } else {
+        const itemKey = payload.key || makeCartItemId();
+        state.cart.items.push({
+          key: itemKey,
+          fingerprint,
+          item_type: payload.item_type || payload.itemType || 'Attraction',
+          attraction_id: payload.attraction_id || payload.attractionId || null,
+          combo_id: payload.combo_id || payload.comboId || null,
+          slot_id: payload.slot_id || payload.slotId || null,
+          combo_slot_id: payload.combo_slot_id || payload.comboSlotId || null,
+          booking_date: payload.booking_date || payload.date || null,
+          slot: payload.slot || null,
+          attraction: payload.attraction || null,
+          combo: payload.combo || null,
+          unitPrice,
+          quantity: qty,
+          meta: payload.meta || {},
+          title: payload.title || payload.meta?.title || '',
+          slotLabel: payload.slotLabel || '',
+          dateLabel: payload.dateLabel || payload.booking_date || payload.date || null,
+        });
+      }
+      if (!state.cart.activeKey) {
+        state.cart.activeKey = payload.key || makeCartItemId();
+      }
+      recomputeCartMeta(state.cart);
+    },
+    removeCartItem(state, action) {
+      const key = action.payload;
+      state.cart.items = state.cart.items.filter((it) => it.key !== key);
+      recomputeCartMeta(state.cart);
+    },
+    resetCart(state) {
+      state.cart = { items: [], totalQuantity: 0, activeKey: null };
+    },
+    setActiveCartItem(state, action) {
+      const key = action.payload;
+      if (state.cart.items.some((it) => it.key === key)) {
+        state.cart.activeKey = key;
+      }
+    },
+    updateCartItemQuantity(state, action) {
+      const { key, quantity } = action.payload || {};
+      const item = state.cart.items.find((it) => it.key === key);
+      if (!item) return;
+      const qty = Math.max(1, Number(quantity || 1));
+      item.quantity = qty;
+      recomputeCartMeta(state.cart);
+    },
   },
   extraReducers: (b) => {
     // OTP send
@@ -371,7 +475,9 @@ const bookingsSlice = createSlice({
 });
 
 export const {
-  setStep, setContact, resetBookingFlow, setCouponCode
+  setStep, setContact, resetBookingFlow, setCouponCode,
+  addCartItem, removeCartItem, resetCart,
+  setActiveCartItem, updateCartItemQuantity
 } = bookingsSlice.actions;
 
 export default bookingsSlice.reducer;

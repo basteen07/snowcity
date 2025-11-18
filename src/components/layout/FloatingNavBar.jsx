@@ -22,25 +22,27 @@ function useClickOutside(ref, onOutside) {
   }, [ref, onOutside]);
 }
 
-// Visible only while the hero sentinel is in view
+// Transparent only while the hero sentinel is visible
 function useHeroTransparent({ sentinelId = "hero-sentinel", fallbackOffset = 240 } = {}) {
-  const [heroVisible, setHeroVisible] = React.useState(false);
+  const [transparent, setTransparent] = React.useState(false);
 
   React.useEffect(() => {
     const el = document.getElementById(sentinelId);
     if (!el) {
-      // Fallback: treat as transparent only near the very top
-      const onScroll = () => setHeroVisible(window.scrollY < fallbackOffset);
+      // Fallback: transparent at very top only
+      const onScroll = () => setTransparent(window.scrollY < fallbackOffset);
       onScroll();
-      window.addEventListener("scroll", onScroll, { passive: true });
+      window.addEventListener("scroll", onScroll);
       return () => window.removeEventListener("scroll", onScroll);
     }
 
     const io = new IntersectionObserver(
       ([entry]) => {
-        setHeroVisible(entry.isIntersecting);
+        // If the bottom sentinel is still visible, stay transparent
+        setTransparent(entry.isIntersecting);
       },
       {
+        // Trigger a bit earlier before the hero completely leaves
         root: null,
         rootMargin: "-56px 0px 0px 0px", // account for navbar height
         threshold: 0,
@@ -51,7 +53,7 @@ function useHeroTransparent({ sentinelId = "hero-sentinel", fallbackOffset = 240
     return () => io.disconnect();
   }, [sentinelId, fallbackOffset]);
 
-  return heroVisible;
+  return transparent;
 }
 
 function useLockBodyScroll(lock) {
@@ -64,27 +66,6 @@ function useLockBodyScroll(lock) {
   }, [lock]);
 }
 
-function useMediaQuery(query) {
-  const getMatch = () =>
-    typeof window !== "undefined" ? window.matchMedia(query).matches : false;
-  const [matches, setMatches] = React.useState(getMatch);
-
-  React.useEffect(() => {
-    if (typeof window === "undefined") return;
-    const mql = window.matchMedia(query);
-    const handler = (e) => setMatches(e.matches);
-    if (mql.addEventListener) mql.addEventListener("change", handler);
-    else mql.addListener(handler);
-    setMatches(mql.matches);
-    return () => {
-      if (mql.removeEventListener) mql.removeEventListener("change", handler);
-      else mql.removeListener(handler);
-    };
-  }, [query]);
-
-  return matches;
-}
-
 /* ---------------- COMPONENT ---------------- */
 
 export default function FloatingNavBar() {
@@ -92,9 +73,11 @@ export default function FloatingNavBar() {
   const dispatch = useDispatch();
 
   const attractions = useSelector((s) => s.attractions.items || []);
+  const offers = useSelector((s) => s.offers.items || []);
+  const combos = useSelector((s) => s.combos.items || []);
   const pages = useSelector((s) => s.pages.items || []);
-  const token = useSelector((s) => s.auth?.token);
   const user = useSelector((s) => s.auth?.user);
+  const token = useSelector((s) => s.auth?.token);
 
   const [menuOpen, setMenuOpen] = React.useState(null);
   const [mobileOpen, setMobileOpen] = React.useState(false);
@@ -112,7 +95,7 @@ export default function FloatingNavBar() {
     const onResize = () => {
       if (window.innerWidth >= 768) setMobileOpen(false);
     };
-    window.addEventListener("resize", onResize, { passive: true });
+    window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
@@ -121,11 +104,8 @@ export default function FloatingNavBar() {
   const topAttractions = attractions.slice(0, 12);
   const guidePages = pages.slice(0, 10);
 
-  const isMobile = useMediaQuery("(max-width: 767px)");
-  const heroVisible = useHeroTransparent({ sentinelId: "hero-sentinel", fallbackOffset: 240 });
-
-  // Mobile: transparent only over hero and only when the mobile panel is closed
-  const mobileTransparent = isMobile && heroVisible && !mobileOpen;
+  // Transparent only while hero sentinel is visible
+  const transparent = useHeroTransparent({ sentinelId: "hero-sentinel", fallbackOffset: 240 });
 
   // Prevent background scroll when mobile menu is open
   useLockBodyScroll(mobileOpen);
@@ -134,37 +114,35 @@ export default function FloatingNavBar() {
     <nav
       ref={navRef}
       className="fixed left-2 right-2 top-2 z-[100] isolate transition-all duration-300"
-      aria-label="Primary"
     >
-      {/* ------------------- DESKTOP NAV (always solid) -------------------- */}
+      {/* ------------------- DESKTOP NAV -------------------- */}
       <div
-        className="
-          hidden md:flex items-center justify-between px-6 h-14
-          bg-white/95 backdrop-blur-xl border border-gray-200 shadow-lg rounded-2xl text-gray-900
-          transition-all duration-300
-        "
+        className={`hidden md:flex items-center justify-between px-6 h-14 transition-all duration-300 ${
+          transparent
+            ? "bg-transparent backdrop-blur-none border border-transparent shadow-none rounded-full text-white"
+            : "bg-white border border-gray-200 shadow-lg rounded-2xl text-gray-900"
+        }`}
       >
         {/* Logo */}
-        <Link to="/" className="flex items-center gap-2" aria-label="Home">
+        <Link to="/" className="flex items-center gap-2">
           <img
             src={Logo}
             alt="SnowCity Logo"
-            className="h-8 w-auto object-contain"
+            className={`h-8 w-auto object-contain ${transparent ? "brightness-200" : "brightness-100"}`}
           />
         </Link>
 
         {/* MENU ITEMS */}
         <div className="flex items-center gap-2">
-          <Link to="/" className="px-3 py-2 text-sm hover:text-blue-600">
+          <Link to="/" className="px-3 py-2 text-sm hover:text-blue-500">
             Home
           </Link>
 
           {/* Attractions */}
           <div className="relative">
             <button
-              className="px-3 py-2 text-sm hover:text-blue-600"
+              className="px-3 py-2 text-sm hover:text-blue-500"
               onClick={() => toggleMenu("attr")}
-              aria-expanded={menuOpen === "attr"}
             >
               Attractions ▾
             </button>
@@ -200,9 +178,8 @@ export default function FloatingNavBar() {
           {/* Offers */}
           <div className="relative">
             <button
-              className="px-3 py-2 text-sm hover:text-blue-600"
+              className="px-3 py-2 text-sm hover:text-blue-500"
               onClick={() => toggleMenu("offers")}
-              aria-expanded={menuOpen === "offers"}
             >
               Offers ▾
             </button>
@@ -229,9 +206,8 @@ export default function FloatingNavBar() {
           {/* Visitor Guide */}
           <div className="relative">
             <button
-              className="px-3 py-2 text-sm hover:text-blue-600"
+              className="px-3 py-2 text-sm hover:text-blue-500"
               onClick={() => toggleMenu("guide")}
-              aria-expanded={menuOpen === "guide"}
             >
               Visitor Guide ▾
             </button>
@@ -251,7 +227,7 @@ export default function FloatingNavBar() {
             )}
           </div>
 
-          <Link to="/contact" className="px-3 py-2 text-sm hover:text-blue-600">
+          <Link to="/contact" className="px-3 py-2 text-sm hover:text-blue-500">
             Contact Us
           </Link>
 
@@ -265,10 +241,10 @@ export default function FloatingNavBar() {
           {token && (
             <div className="relative">
               <button
-                className="h-9 w-9 rounded-full flex items-center justify-center text-sm font-semibold bg-gray-900 text-white"
+                className={`h-9 w-9 rounded-full flex items-center justify-center text-sm font-semibold transition ${
+                  transparent ? "bg-white/20 text-white" : "bg-gray-900 text-white"
+                }`}
                 onClick={() => setProfileOpen((v) => !v)}
-                aria-expanded={profileOpen}
-                aria-label="Account menu"
               >
                 {initial}
               </button>
@@ -299,17 +275,17 @@ export default function FloatingNavBar() {
         </div>
       </div>
 
-      {/* ------------------- MOBILE NAV BAR (transparent only over hero) -------------------- */}
+      {/* ------------------- MOBILE NAV BAR -------------------- */}
       <div
         className={`md:hidden px-3 h-14 flex items-center justify-between transition-all ${
-          mobileTransparent
+          transparent
             ? "bg-transparent border border-transparent text-white rounded-full shadow-none"
-            : "bg-white/95 border border-gray-200 text-gray-900 rounded-2xl shadow"
+            : "bg-white border border-gray-200 text-gray-900 rounded-2xl shadow"
         }`}
       >
         <button
           className={`p-2 rounded-full transition ${
-            mobileTransparent ? "bg-white/20 text-white" : "bg-gray-200 text-gray-800"
+            transparent ? "bg-white/20 text-white" : "bg-gray-200 text-gray-800"
           }`}
           onClick={() => setMobileOpen((v) => !v)}
           aria-expanded={mobileOpen}
@@ -322,7 +298,7 @@ export default function FloatingNavBar() {
           <img
             src={Logo}
             alt="SnowCity Logo"
-            className={`h-8 transition ${mobileTransparent ? "brightness-150 drop-shadow" : "brightness-100"}`}
+            className={`h-8 transition ${transparent ? "brightness-200" : "brightness-100"}`}
           />
         </Link>
 
@@ -331,7 +307,7 @@ export default function FloatingNavBar() {
             <>
               <button
                 className={`h-9 w-9 rounded-full transition ${
-                  mobileTransparent ? "bg-white/20 text-white" : "bg-gray-900 text-white"
+                  transparent ? "bg-white/20 text-white" : "bg-gray-900 text-white"
                 }`}
                 onClick={() => setProfileOpen((v) => !v)}
                 aria-expanded={profileOpen}
