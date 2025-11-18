@@ -14,6 +14,7 @@ function getUniqueKey(item) {
 
 export default function AttractionsCarousel({ items = [] }) {
   const [index, setIndex] = React.useState(0);
+
   const cards = React.useMemo(
     () =>
       items.map((it) => ({
@@ -40,28 +41,37 @@ export default function AttractionsCarousel({ items = [] }) {
   return (
     <section
       className="
-        relative w-full overflow-hidden py-12
+        relative w-full overflow-hidden py-14 
         bg-gradient-to-b
         from-[#0b1a33]
         via-[#0a315e]
         to-[#dff4ff]
       "
     >
-      {/* Subtle wave top (minimal CSS) */}
-      <div className="absolute top-0 left-0 right-0 h-16 z-0 overflow-hidden">
+      {/* ⭐ SAME WAVE STYLE FROM OFFERS-CAROUSEL */}
+      <div className="absolute top-0 left-0 right-0 w-full overflow-hidden leading-[0] z-0">
         <svg
-          className="w-full h-full animate-wave"
-          viewBox="0 0 1440 320"
+          className="relative block w-[200%] h-[90px] animate-liquidWave"
+          viewBox="0 0 1200 120"
           preserveAspectRatio="none"
         >
           <path
-            fill="#0a315e"
-            d="M0,224L48,202.7C96,181,192,139,288,138.7C384,139,480,181,576,213.3C672,245,768,267,864,266.7C960,267,1056,245,1152,229.3C1248,213,1344,203,1392,197.3L1440,192V0H0Z"
+            d="
+              M321.39 56.44
+              c58.39 4.09 113.77 22.36 171.23 29.21
+              c95.25 11.73 191.92-7.88 284.83-25.5
+              c93.44-17.72 188.32-36.37 285.78-27.95
+              c66 5.64 128.47 24.69 193.77 39.54V0H0v27.35
+              c47.72 22.52 103.4 27.88 157.05 29.66
+              c54.13 1.79 108.29-3.64 164.34-.57z
+            "
+            fill="#0a1f36"
+            fillOpacity="0.9"
           />
         </svg>
       </div>
 
-      {/* Header */}
+      {/* HEADER */}
       <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-5 md:px-8">
         <div className="text-center mb-8">
           <h2 className="text-2xl md:text-3xl font-bold text-white drop-shadow-lg">
@@ -81,18 +91,17 @@ export default function AttractionsCarousel({ items = [] }) {
         </div>
       </div>
 
-      {/* Desktop grid */}
+      {/* DESKTOP GRID */}
       <div className="hidden md:block relative z-10 max-w-6xl mx-auto px-5">
         <div className="grid md:grid-cols-3 gap-6">
-          {cards.map((item, i) => (
+          {cards.map((item) => (
             <div
               key={item._key}
               className="
                 rounded-2xl overflow-hidden bg-white
-                border border-white/40
-                shadow-md hover:shadow-xl
-                transition-all duration-300 hover:-translate-y-1
-                will-change-transform
+                border border-white/40 shadow-md
+                hover:shadow-xl transition-all duration-300
+                hover:-translate-y-1 will-change-transform
               "
             >
               <AttractionCard item={item} />
@@ -101,17 +110,15 @@ export default function AttractionsCarousel({ items = [] }) {
         </div>
       </div>
 
-      {/* Mobile paired cards */}
+      {/* MOBILE PAIRED CARDS */}
       <div className="md:hidden relative z-10 max-w-md mx-auto px-4 mt-2">
         <div className="flex items-center justify-between gap-3 w-full h-[260px] relative overflow-hidden">
-          {/* Left card */}
           {leftCard && (
             <div
               key={leftCard._key + "-L-" + index}
               className="
                 w-[48%] rounded-2xl bg-white shadow-md overflow-hidden
-                border border-white/40
-                animate-card
+                border border-white/40 animate-card
               "
               style={{ "--x": "-24px" }}
             >
@@ -119,14 +126,12 @@ export default function AttractionsCarousel({ items = [] }) {
             </div>
           )}
 
-          {/* Right card (if exists) */}
           {!isLastOdd && rightCard && (
             <div
               key={rightCard._key + "-R-" + index}
               className="
                 w-[48%] rounded-2xl bg-white shadow-md overflow-hidden
-                border border-white/40
-                animate-card
+                border border-white/40 animate-card
               "
               style={{ "--x": "24px" }}
             >
@@ -134,15 +139,13 @@ export default function AttractionsCarousel({ items = [] }) {
             </div>
           )}
 
-          {/* Final single card centered */}
           {isLastOdd && (
             <div
               key={leftCard._key + "-ODD-" + index}
               className="
                 absolute left-1/2 -translate-x-1/2 w-[70%]
                 rounded-2xl bg-white shadow-md overflow-hidden
-                border border-white/40
-                animate-card
+                border border-white/40 animate-card
               "
               style={{ "--y": "24px" }}
             >
@@ -152,28 +155,14 @@ export default function AttractionsCarousel({ items = [] }) {
         </div>
       </div>
 
-      {/* Minimal CSS: single wave + single card animation */}
+      {/* ⭐ SAME WAVE & CARD ANIMATIONS */}
       <style>{`
-         @keyframes liquidWave {
+        @keyframes liquidWave {
           0% { transform: translateX(0); }
           100% { transform: translateX(-50%); }
         }
         .animate-liquidWave {
           animation: liquidWave 12s linear infinite;
-        }
-
-.storm-layer {
-          position: absolute;
-          inset: 0;
-          background-image:
-            radial-gradient(3px 4px at 20% 10%, rgba(255,255,255,0.7), transparent),
-            radial-gradient(2px 3px at 80% 20%, rgba(255,255,255,0.5), transparent),
-            radial-gradient(4px 5px at 50% 40%, rgba(255,255,255,0.9), transparent),
-            radial-gradient(3px 3px at 30% 75%, rgba(255,255,255,0.8), transparent);
-          background-size: 200px 200px;
-          transform: skewX(-18deg);
-          animation: polarStorm 6s linear infinite;
-          opacity: 0.7;
         }
 
         @keyframes cardIn {
@@ -182,10 +171,6 @@ export default function AttractionsCarousel({ items = [] }) {
         }
         .animate-card {
           animation: cardIn .55s ease-out both;
-        }
-
-        @media (prefers-reduced-motion: reduce) {
-          .animate-wave, .animate-card { animation: none !important; }
         }
       `}</style>
     </section>

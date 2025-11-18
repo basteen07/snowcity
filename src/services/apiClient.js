@@ -6,6 +6,42 @@ if (!API_BASE_URL && import.meta.env?.DEV) {
   console.warn('VITE_API_BASE_URL is not set. Requests will go to the current origin. Use a Vite proxy or set the env var.');
 }
 
+const SESSION_STORAGE_KEY = 'snow_session_id';
+let guestSessionId = null;
+
+const isBrowser = typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
+
+const generateSessionId = () => `snow-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+
+const ensureGuestSessionId = () => {
+  if (guestSessionId) return guestSessionId;
+  if (!isBrowser) return null;
+  try {
+    const stored = window.localStorage.getItem(SESSION_STORAGE_KEY);
+    if (stored) {
+      guestSessionId = stored;
+      return guestSessionId;
+    }
+    guestSessionId = generateSessionId();
+    window.localStorage.setItem(SESSION_STORAGE_KEY, guestSessionId);
+    return guestSessionId;
+  } catch (err) {
+    guestSessionId = guestSessionId || generateSessionId();
+    return guestSessionId;
+  }
+};
+
+export function setGuestSessionId(id) {
+  guestSessionId = id || null;
+  if (isBrowser && guestSessionId) {
+    try { window.localStorage.setItem(SESSION_STORAGE_KEY, guestSessionId); } catch {}
+  }
+}
+
+export function getGuestSessionId() {
+  return ensureGuestSessionId();
+}
+
 // Core axios instance
 const http = axios.create({
   baseURL: API_BASE_URL,
@@ -116,6 +152,11 @@ http.interceptors.request.use((config) => {
 
   const token = (authHandlers.getToken && authHandlers.getToken()) || authToken;
   if (token) config.headers.Authorization = `Bearer ${token}`;
+
+  if (!config.headers['X-Session-Id']) {
+    const sessionId = ensureGuestSessionId();
+    if (sessionId) config.headers['X-Session-Id'] = sessionId;
+  }
   return config;
 });
 

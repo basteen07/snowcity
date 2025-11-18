@@ -74,12 +74,16 @@ const endpoints = {
     passwordReset: () => '/api/auth/password/reset'    // POST
   },
 
+
+
+  // Current User
   // Current User
   users: {
     me: () => '/api/users/me',            // GET/PATCH (Auth)
     updateMe: () => '/api/users/me',      // PATCH (Auth)
-    myBookings: () => '/api/users/me/bookings', // GET (Auth)
-    myBookingById: (id) => `/api/users/me/bookings/${encodeSeg(id)}`, // GET (Auth)
+    // Mapped to the new bookings endpoints
+    myBookings: () => '/api/bookings', // GET (Auth)
+    myBookingById: (id) => `/api/bookings/${encodeSeg(id)}`, // GET (Auth)
     notifications: () => '/api/users/me/notifications' // GET (Auth)
   },
 
@@ -130,42 +134,27 @@ const endpoints = {
     list: () => '/api/gallery',
     byId: (id) => `/api/gallery/${encodeSeg(id)}`
   },
-
-  bookings: {
-    list: () => '/api/bookings',
-    create: () => '/api/bookings',
-    byId: (id) => `/api/bookings/${encodeSeg(id)}`,
-    cancel: (id) => `/api/bookings/${encodeSeg(id)}/cancel`,
-    otp: {
-      send: () => '/api/bookings/otp/send',     // POST
-      verify: () => '/api/bookings/otp/verify'  // POST
-    }
-  },
-  payments: {
+bookings: {
+    list: () => '/api/bookings',                 // GET
+    create: () => '/api/bookings',               // POST
+    byId: (id) => `/api/bookings/${encodeSeg(id)}`, // GET
+    // Uncomment if backend adds a cancel route:
+    // cancel: (id) => `/api/bookings/${encodeSeg(id)}/cancel`, // POST/DELETE
     payphi: {
-      initiate: (bookingId) => `/api/bookings/${encodeSeg(bookingId)}/pay/payphi/initiate`,
-      status: (bookingId) => `/api/bookings/${encodeSeg(bookingId)}/pay/payphi/status`
-    },
-    // ... keep razorpay/phonepe if you had them
-  },
-  cart: {
-    me: () => '/api/cart', // GET (optional auth; guests use x-session-id)
-    items: () => '/api/cart/items', // POST
-    itemById: (id) => `/api/cart/items/${encodeSeg(id)}`, // PUT/DELETE
-    payphi: {
-      initiate: () => '/api/cart/pay/payphi/initiate',
-      status: () => '/api/cart/pay/payphi/status'
+      initiate: (bookingId) =>
+        `/api/bookings/${encodeSeg(bookingId)}/pay/payphi/initiate`, // POST
+      status: (bookingId) =>
+        `/api/bookings/${encodeSeg(bookingId)}/pay/payphi/status`    // GET
     }
-  },
-  users: {
-    me: () => '/api/users/me',
-    updateMe: () => '/api/users/me',
-    myBookings: () => '/api/users/me/bookings',
-    myBookingById: (id) => `/api/users/me/bookings/${encodeSeg(id)}`,
-    notifications: () => '/api/users/me/notifications'
+  }, 
+   payments: {
+    payphi: {
+      initiate: (bookingId) =>
+        `/api/bookings/${encodeSeg(bookingId)}/pay/payphi/initiate`,
+      status: (bookingId) =>
+        `/api/bookings/${encodeSeg(bookingId)}/pay/payphi/status`
+    }
   }
-
-  
 };
 
 export default endpoints;

@@ -124,10 +124,14 @@ export default function GalleryManager() {
       )}
 
       <AdminTable
-        keyField="gallery_id"
+        keyField="gallery_item_id"
         columns={columns}
         rows={state.items}
-        onRowClick={(row) => navigate(`/admin/catalog/gallery/${row.gallery_id || row.id}`)}
+        onRowClick={(row) => {
+          const galleryId = row?.gallery_item_id ?? row?.gallery_id ?? row?.id;
+          if (galleryId == null) return;
+          navigate(`/admin/catalog/gallery/${galleryId}`);
+        }}
         empty={state.status === 'loading' ? 'Loading…' : 'No media found'}
       />
     </div>

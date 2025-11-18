@@ -4,6 +4,7 @@ import adminApi from '../../services/adminApi';
 import ImageUploader from '../../components/common/ImageUploader';
 import RawEditor from '../../components/common/RawEditor';
 import RichText from '../../components/common/RichText';
+import GalleryField from '../../components/common/GalleryField';
 
 export default function BlogForm() {
   const nav = useNavigate();
@@ -95,12 +96,12 @@ ${form.raw_html || ''}
         <div>
           <label className="block text-sm">Title</label>
           <input className="w-full rounded-md border px-3 py-2 dark:bg-neutral-900 dark:border-neutral-700"
-            value={form.title} onChange={(e) => onChange({ title: e.target.value })} />
+            value={form.title ?? ''} onChange={(e) => onChange({ title: e.target.value })} />
         </div>
         <div>
           <label className="block text-sm">Slug</label>
           <input className="w-full rounded-md border px-3 py-2 dark:bg-neutral-900 dark:border-neutral-700"
-            value={form.slug} onChange={(e) => onChange({ slug: e.target.value })} placeholder="my-blog" />
+            value={form.slug ?? ''} onChange={(e) => onChange({ slug: e.target.value })} placeholder="my-blog" />
         </div>
       </div>
 
@@ -108,7 +109,7 @@ ${form.raw_html || ''}
         <div>
           <label className="block text-sm">Author</label>
           <input className="w-full rounded-md border px-3 py-2 dark:bg-neutral-900 dark:border-neutral-700"
-            value={form.author} onChange={(e) => onChange({ author: e.target.value })} />
+            value={form.author ?? ''} onChange={(e) => onChange({ author: e.target.value })} />
         </div>
         <div>
           <label className="block text-sm">Featured image</label>
@@ -146,6 +147,12 @@ ${form.raw_html || ''}
         <>
           <label className="block text-sm">Content</label>
           <RichText value={form.content || ''} onChange={(v) => onChange({ content: v })} />
+          <GalleryField
+            label="Content gallery"
+            helper="Upload multiple inline images to reuse inside your article."
+            value={form.gallery || []}
+            onChange={(gallery) => onChange({ gallery })}
+          />
         </>
       )}
 

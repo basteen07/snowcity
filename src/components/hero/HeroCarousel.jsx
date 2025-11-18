@@ -56,10 +56,8 @@ export default function HeroCarousel({ banners = [], waveColor = "#0b1a33" }) {
 
   return (
     <section id="hero" className="relative w-full overflow-hidden">
-      {/* Bottom sentinel so navbar knows when hero ends */}
       <span id="hero-sentinel" className="pointer-events-none absolute bottom-0 left-0 h-px w-px" />
 
-      {/* SWIPER */}
       <Swiper
         modules={[Autoplay, Pagination, EffectFade, Parallax]}
         slidesPerView={1}
@@ -74,9 +72,10 @@ export default function HeroCarousel({ banners = [], waveColor = "#0b1a33" }) {
             "swiper-pagination-bullet !bg-white/80 hover:!bg-blue-400 !w-2.5 !h-2.5 !opacity-100 transition-all",
         }}
         className="
-          h-[100vh]      /* full mobile height */
+          h-[85vh] 
           sm:h-[80vh]
           md:h-[90vh]
+          lg:h-[100vh]
           relative
         "
       >
@@ -86,9 +85,17 @@ export default function HeroCarousel({ banners = [], waveColor = "#0b1a33" }) {
           const title = b?.title || b?.name || "";
           const href = deriveHref(b);
 
+          /* UNIQUE KEY */
+          const uniqueKey =
+            b?.id ||
+            b?.banner_id ||
+            b?.uuid ||
+            `${idx}-${desktopImg}-${mobileImg}`;
+
           return (
-            <SwiperSlide key={b?.id || b?.banner_id || idx}>
+            <SwiperSlide key={uniqueKey}>
               <div className="relative w-full h-full">
+
                 {/* BACKGROUND IMAGE */}
                 <div className="absolute inset-0" data-swiper-parallax="-20%">
                   <picture>
@@ -97,7 +104,9 @@ export default function HeroCarousel({ banners = [], waveColor = "#0b1a33" }) {
                       src={desktopImg}
                       alt={title || "Banner"}
                       className="
-                        w-full h-full object-cover object-center
+                        w-full h-full object-cover 
+                        object-center md:object-[center_20%] 
+                        lg:object-center
                         will-change-transform animate-kenburns
                         brightness-110 contrast-110 saturate-110
                       "
@@ -109,16 +118,26 @@ export default function HeroCarousel({ banners = [], waveColor = "#0b1a33" }) {
                   </picture>
                 </div>
 
-                {/* OVERLAY GRADIENT */}
-                <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-black/25 to-transparent" />
+                {/* DARK OVERLAY (better text visibility) */}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/40 to-transparent" />
 
                 {/* TITLE BLOCK */}
                 {title ? (
                   <div
-                    className="absolute inset-x-0 bottom-24 text-center text-white px-4 z-10"
+                    className="
+                      absolute bottom-20 sm:bottom-24 md:bottom-28 
+                      inset-x-0 text-center text-white px-4 z-10
+                      max-w-screen-lg mx-auto
+                    "
                     data-swiper-parallax="-200"
                   >
-                    <h2 className="text-3xl sm:text-5xl font-extrabold mb-4 drop-shadow-2xl">
+                    <h2
+                      className="
+                        text-2xl sm:text-4xl md:text-5xl lg:text-6xl 
+                        font-extrabold drop-shadow-2xl
+                        leading-snug sm:leading-tight
+                      "
+                    >
                       {title}
                     </h2>
 
@@ -127,8 +146,8 @@ export default function HeroCarousel({ banners = [], waveColor = "#0b1a33" }) {
                         href={href}
                         className="
                           inline-flex items-center justify-center
-                          mt-2 px-6 py-3
-                          text-white text-base font-semibold
+                          mt-4 px-6 py-3
+                          text-white text-base sm:text-lg font-semibold
                           rounded-full
                           bg-white/10 backdrop-blur-md border border-white/30
                           hover:bg-white/20
@@ -142,25 +161,29 @@ export default function HeroCarousel({ banners = [], waveColor = "#0b1a33" }) {
                   </div>
                 ) : null}
 
-                {/* CLICKABLE WHOLE SLIDE (behind CTA) */}
-                {href ? <a href={href} className="absolute inset-0 z-0" aria-label={title || "Banner"} /> : null}
+                {href ? (
+                  <a
+                    href={href}
+                    className="absolute inset-0 z-0"
+                    aria-label={title || "Banner"}
+                  />
+                ) : null}
               </div>
             </SwiperSlide>
           );
         })}
       </Swiper>
 
-      {/* Layered wave footer blending into next section */}
+      {/* WAVE FOOTER */}
       <div className="absolute -bottom-px inset-x-0 h-24 pointer-events-none z-[30]">
-        {/* soft gradient merge */}
+
         <div
           className="absolute inset-0"
           style={{
-            background: `linear-gradient(to bottom, rgba(0,0,0,0) 0%, ${waveColor} 85%)`,
+            background: `linear-gradient(to bottom, rgba(0,0,0,0) 0%, ${waveColor} 88%)`,
           }}
         />
 
-        {/* Back wave */}
         <svg
           className="absolute bottom-0 left-0 w-full h-16 opacity-70 animate-wave-slow"
           viewBox="0 0 1440 320"
@@ -168,56 +191,52 @@ export default function HeroCarousel({ banners = [], waveColor = "#0b1a33" }) {
         >
           <path
             fill={waveColor}
-            d="
-              M0,256
-              C240,280 480,270 720,240
-              C960,210 1200,150 1440,160
-              V320H0Z
-            "
+            d="M0,256 C240,280 480,270 720,240 C960,210 1200,150 1440,160 V320H0Z"
           />
         </svg>
 
-        {/* Front wave */}
         <svg
-          className="absolute bottom-0 left-0 w-full h-18 animate-wave"
+          className="absolute bottom-0 left-0 w-full h-20 animate-wave"
           viewBox="0 0 1440 320"
           preserveAspectRatio="none"
         >
           <path
             fill={waveColor}
-            d="
-              M0,240
-              C200,270 400,260 600,230
-              C800,200 1000,140 1200,160
-              C1350,180 1440,230 1440,260
-              V320H0Z
-            "
+            d="M0,240 C200,270 400,260 600,230 C800,200 1000,140 1200,160 C1350,180 1440,230 1440,260 V320H0Z"
           />
         </svg>
       </div>
 
       {/* ANIMATIONS */}
       <style>{`
-        /* Kenburns slow zoom */
         @keyframes kenburns {
           0% { transform: scale(1); }
           100% { transform: scale(1.08); }
         }
         .animate-kenburns {
-          animation: kenburns 14s ease-out forwards;
+          animation: kenburns 16s ease-out forwards;
         }
 
-        /* CTA gentle float */
         @keyframes floatY {
           0% { transform: translateY(0); }
           50% { transform: translateY(2px); }
           100% { transform: translateY(0); }
         }
         .animate-cta {
-          animation: floatY 3.5s ease-in-out infinite;
+          animation: floatY 3s ease-in-out infinite;
         }
 
-    `}</style>
+        @keyframes wave {
+          0% { transform: translateX(0); }
+          100% { transform: translateX(-50px); }
+        }
+        .animate-wave {
+          animation: wave 8s linear infinite;
+        }
+        .animate-wave-slow {
+          animation: wave 14s linear infinite;
+        }
+      `}</style>
     </section>
   );
 }

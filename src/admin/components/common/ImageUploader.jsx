@@ -1,5 +1,6 @@
 import React from 'react';
 import adminApi from '../../services/adminApi';
+import { imgSrc } from '../../../utils/media';
 
 const ENDPOINT = import.meta.env?.VITE_ADMIN_UPLOAD_ENDPOINT || '/api/admin/uploads';
 const CLOUD_PRESET = import.meta.env?.VITE_CLOUDINARY_UPLOAD_PRESET || '';
@@ -20,6 +21,7 @@ export default function ImageUploader({
   const [status, setStatus] = React.useState('idle'); // idle|loading|done|error
   const [errMsg, setErrMsg] = React.useState('');
   const canUpload = true;
+  const resolvedValue = React.useMemo(() => imgSrc(value || ''), [value]);
 
   React.useEffect(() => {
     if (!file) return;
@@ -149,7 +151,13 @@ export default function ImageUploader({
       {/* Previews */}
       <div className="mt-2 flex items-center gap-3">
         {preview ? <img src={preview} alt="preview" className="h-16 w-16 object-cover rounded-md border dark:border-neutral-800" /> : null}
-        {value ? <img src={value} alt="current" className="h-16 w-16 object-cover rounded-md border dark:border-neutral-800" /> : null}
+        {resolvedValue ? (
+          <img
+            src={resolvedValue}
+            alt="current"
+            className="h-16 w-16 object-cover rounded-md border dark:border-neutral-800"
+          />
+        ) : null}
       </div>
 
       {/* Errors */}

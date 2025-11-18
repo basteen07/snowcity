@@ -1,9 +1,9 @@
 import React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import adminApi from '../../services/adminApi';
-import ImageUploader from '../../components/common/ImageUploader';
 import RawEditor from '../../components/common/RawEditor';
 import RichText from '../../components/common/RichText';
+import GalleryField from '../../components/common/GalleryField';
 
 const NAV_GROUPS = [
   { key: '', label: 'No nav' },
@@ -197,10 +197,12 @@ ${form.raw_html || ''}
         <>
           <label className="block text-sm">Content</label>
           <RichText value={form.content || ''} onChange={(v) => onChange({ content: v })} />
-          <div className="mt-2">
-            <label className="block text-sm">Inline image (optional)</label>
-            <ImageUploader label="Featured/Inline image" value={''} onChange={() => {}} />
-          </div>
+          <GalleryField
+            label="Content gallery"
+            helper="Upload multiple inline assets to reuse inside the visual editor or elsewhere in the page."
+            value={form.gallery || []}
+            onChange={(gallery) => onChange({ gallery })}
+          />
         </>
       )}
 
