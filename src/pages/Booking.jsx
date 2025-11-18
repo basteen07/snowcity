@@ -1,6 +1,6 @@
 import React from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import dayjs from 'dayjs';
 import api from '../services/apiClient';
 import endpoints from '../services/endpoints';
@@ -121,6 +121,7 @@ const slotHasCapacity = (slot) => {
 /* ================= Component ================= */
 export default function Booking() {
   const dispatch = useDispatch();
+  const navigate = useNavigate();
   const auth = useSelector((s) => s.auth);
   const hasToken = !!auth?.token;
 
@@ -139,6 +140,7 @@ export default function Booking() {
     }
     return cartItems[0];
   }, [cartItems, activeKey]);
+  const activeItemKey = checkoutItem?.key || null;
 
   const [sel, setSel] = React.useState(() => createDefaultSelection());
   const [editingKey, setEditingKey] = React.useState(null);
@@ -383,48 +385,56 @@ export default function Booking() {
       return;
     }
 
-    const primaryItem = checkoutItem || cartItems[0];
-    if (!primaryItem) {
-      alert('No items to book.');
-      return;
-    }
-
     try {
       // Addons payload
       const addonsPayload = Array.from(selectedAddons.values())
         .filter((a) => Number(a.quantity) > 0)
         .map((a) => ({ addon_id: a.addon_id, quantity: Number(a.quantity) }));
 
-      // Build payload
-      const item_type = primaryItem.item_type === 'Combo' ? 'Combo' : 'Attraction';
-      let payload;
-      if (item_type === 'Combo') {
-        payload = {
-          item_type,
-          combo_id: primaryItem.combo_id,
-          combo_slot_id: primaryItem.combo_slot_id,
-          booking_date: primaryItem.booking_date,
-          quantity: primaryItem.quantity,
-          addons: addonsPayload,
-          coupon_code: (coupon?.code || '').trim() || undefined,
-          offer_id: selectedOfferId ? Number(selectedOfferId) : undefined
+      const couponCode = (coupon?.code || '').trim() || undefined;
+      const offerId = selectedOfferId ? Number(selectedOfferId) : undefined;
+      const bookingPayloads = cartItems.map((item) => {
+        const isCombo = item.item_type === 'Combo';
+        const isActive = activeItemKey && item.key === activeItemKey;
+        return {
+          item_type: isCombo ? 'Combo' : 'Attraction',
+          combo_id: isCombo ? item.combo_id : undefined,
+          combo_slot_id: isCombo ? item.combo_slot_id : undefined,
+          attraction_id: !isCombo ? item.attraction_id : undefined,
+          slot_id: !isCombo ? item.slot_id : undefined,
+          booking_date: item.booking_date,
+          quantity: item.quantity,
+          addons: isActive ? addonsPayload : [],
+          coupon_code: isActive ? couponCode : undefined,
+          offer_id: isActive ? offerId : undefined
         };
-      } else {
-        payload = {
-          item_type,
-          attraction_id: primaryItem.attraction_id,
-          slot_id: primaryItem.slot_id,
-          booking_date: primaryItem.booking_date,
-          quantity: primaryItem.quantity,
-          addons: addonsPayload,
-          coupon_code: (coupon?.code || '').trim() || undefined,
-          offer_id: selectedOfferId ? Number(selectedOfferId) : undefined
-        };
+      });
+
+      const multiItem = bookingPayloads.length > 1;
+      const payloadForApi = multiItem ? bookingPayloads : bookingPayloads[0];
+
+      // 1) Create booking(s)
+      const created = await dispatch(createBooking(payloadForApi)).unwrap();
+      const createdBookings = Array.isArray(created?.bookings)
+        ? created.bookings
+        : created?.booking
+          ? [created.booking]
+          : [];
+
+      if (!createdBookings.length) throw new Error('No booking data returned from server');
+
+      if (multiItem) {
+        alert(`Created ${createdBookings.length} bookings. Complete payment for each from My Bookings.`);
+        dispatch(resetCart());
+        setSelectedAddons(new Map());
+        setSelectedOfferId('');
+        dispatch(setCouponCode(''));
+        setSel(createDefaultSelection());
+        navigate('/my-bookings');
+        return;
       }
 
-      // 1) Create booking
-      const created = await dispatch(createBooking(payload)).unwrap();
-      const bookingId = created?.booking_id || created?.booking?.id || created?.booking?.booking_id;
+      const bookingId = createdBookings[0]?.booking_id || createdBookings[0]?.id;
       if (!bookingId) throw new Error('Booking ID missing from server response');
 
       // 2) Initiate payment

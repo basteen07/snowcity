@@ -335,12 +335,14 @@ const bookingsSlice = createSlice({
       const unitPrice = Number(payload.unitPrice || payload.price || payload.unit_price || 0);
       const allowMerge = payload.merge === undefined ? true : !!payload.merge;
       const existing = allowMerge ? state.cart.items.find((it) => it.fingerprint === fingerprint) : null;
+      let createdKey = null;
       if (existing) {
         existing.quantity += qty;
         existing.unitPrice = unitPrice || existing.unitPrice || 0;
         existing.booking_date = payload.booking_date || payload.date || existing.booking_date || null;
         existing.slotLabel = payload.slotLabel || existing.slotLabel || '';
         existing.title = payload.title || existing.title || '';
+        createdKey = existing.key;
       } else {
         const itemKey = payload.key || makeCartItemId();
         state.cart.items.push({
@@ -362,9 +364,10 @@ const bookingsSlice = createSlice({
           slotLabel: payload.slotLabel || '',
           dateLabel: payload.dateLabel || payload.booking_date || payload.date || null,
         });
+        createdKey = itemKey;
       }
-      if (!state.cart.activeKey) {
-        state.cart.activeKey = payload.key || makeCartItemId();
+      if (!state.cart.activeKey && createdKey) {
+        state.cart.activeKey = createdKey;
       }
       recomputeCartMeta(state.cart);
     },

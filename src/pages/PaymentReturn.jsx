@@ -4,7 +4,6 @@ import { useLocation } from 'react-router-dom';
 import { get } from '../services/apiClient';
 import { EP } from '../services/endpoints';
 import { useDispatch } from 'react-redux';
-import { finalizeCart } from '../features/cart/cartSlice';
 
 function useQuery() {
   const { search } = useLocation();
@@ -26,24 +25,30 @@ export default function PaymentReturn() {
 
     (async () => {
       try {
-        // Hit webhook GET (idempotent, ok if it already ran)
+        // Always hit PayPhi idempotent webhook
         if (tranCtx) await get(EP.payphiReturn(tranCtx)).catch(() => {});
 
+        // 🎯 CART LOGIC REMOVED (cartSlice no longer exists)
         if (cartRef && status === 'success') {
-          await dispatch(finalizeCart({ cart_ref: cartRef })).unwrap().catch(() => {});
           if (!mounted) return;
-          setMsg('Cart payment completed. Bookings created.');
-        } else if (bookingId) {
-          // For booking flows, webhook already finalized booking.
+          setMsg('Payment completed. Booking created.');
+        }
+
+        // Booking flows
+        else if (bookingId) {
           if (!mounted) return;
           setMsg(status === 'success' ? 'Payment success' : 'Payment pending');
-        } else {
+        }
+
+        // Default
+        else {
           if (!mounted) return;
           setMsg('Payment processed.');
         }
+
       } catch (e) {
         if (!mounted) return;
-        setMsg('Payment processed (check My Bookings or Cart).');
+        setMsg('Payment processed (check My Bookings).');
       }
     })();
 
@@ -55,7 +60,9 @@ export default function PaymentReturn() {
       <h1 className="text-2xl font-semibold mb-4">Payment</h1>
       <p>{msg}</p>
       <div className="mt-6">
-        <a href="/my-bookings" className="text-blue-600 underline">Go to My Bookings</a>
+        <a href="/my-bookings" className="text-blue-600 underline">
+          Go to My Bookings
+        </a>
       </div>
     </div>
   );
