@@ -204,9 +204,17 @@ export const sendAuthOtp = createAsyncThunk(
       const state = getState();
       const finalEmail = (email ?? state.bookings?.contact?.email ?? '').trim();
       const finalPhone = normalizePhone(phone ?? state.bookings?.contact?.phone ?? '');
+      const finalName = (state.bookings?.contact?.name || '').trim() || 'Guest';
       if (!finalEmail && !finalPhone) throw new Error('Enter email or phone to receive OTP');
 
-      const body = finalPhone ? { phone: finalPhone, channel } : { email: finalEmail, channel: 'email' };
+      const body = {
+        channel: finalPhone ? channel : 'email',
+        createIfNotExists: true,
+        name: finalName,
+      };
+      if (finalPhone) body.phone = finalPhone;
+      if (finalEmail) body.email = finalEmail;
+
       const res = await api.post(endpoints.auth.otpSend(), body);
 
       return {

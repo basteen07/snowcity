@@ -118,7 +118,7 @@ export default function Booking() {
   const activeItemKey = checkoutItem?.key || null;
 
   // UI State
-  const [isBookingOpen, setIsBookingOpen] = useState(false);
+  const [isBookingOpen, setIsBookingOpen] = useState(true);
   const [sel, setSel] = React.useState(() => createDefaultSelection());
   const [editingKey, setEditingKey] = React.useState(null);
   const [slots, setSlots] = React.useState({ status: 'idle', items: [], error: null });
@@ -132,6 +132,7 @@ export default function Booking() {
 
   const [cartAddons, setCartAddons] = React.useState(new Map());
   const [debugOtp, setDebugOtp] = React.useState('');
+  const contentRef = React.useRef(null);
 
   const currentItemAddons = React.useMemo(() => {
     if (!activeItemKey) return new Map();
@@ -149,6 +150,10 @@ export default function Booking() {
   }, [navigate]);
 
   // --- EFFECTS ---
+
+  React.useEffect(() => {
+    dispatch(setStep(1));
+  }, [dispatch]);
 
   React.useEffect(() => {
     if (attractionsState.status === 'idle') dispatch(fetchAttractions({ active: true, limit: 100 }));
@@ -186,6 +191,14 @@ export default function Booking() {
       dispatch(setStep(2));
     }
   }, [forceAuth, hasToken, dispatch]);
+
+  React.useEffect(() => {
+    if (contentRef.current) {
+      contentRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+    } else if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }, [step]);
 
   const fetchSlots = React.useCallback(async ({ itemType, attractionId, comboId, date }) => {
     if (!date) return;
@@ -618,7 +631,7 @@ export default function Booking() {
       {/* Overlay (Mobile Only) */}
       {isBookingOpen && (
         <div 
-          className="md-hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-40 transition-opacity duration-300"
+          className="md:hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-40 transition-opacity duration-300"
           onClick={handleCloseBooking}
         />
       )}
@@ -653,7 +666,7 @@ export default function Booking() {
             </div>
 
             {/* Scrollable Content Area */}
-            <div className="px-6 py-6 overflow-y-auto md:overflow-visible max-h-[calc(90vh-140px)] md:max-h-none pb-32 md:pb-6">
+            <div ref={contentRef} className="px-6 py-6 overflow-y-auto md:overflow-visible max-h-[calc(90vh-140px)] md:max-h-none pb-32 md:pb-6">
               
               {/* STEP 1 */}
               {step === 1 && (

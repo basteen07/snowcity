@@ -1,7 +1,9 @@
 import React from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
-import { logout } from "../../features/auth/authSlice";
+import { logout, setCredentials } from "../../features/auth/authSlice";
+import api from "../../services/apiClient";
+import endpoints from "../../services/endpoints";
 import { getAttrId } from "../../utils/ids";
 import Logo from "../../assets/images/Logo.webp";
 
@@ -82,6 +84,9 @@ export default function FloatingNavBar() {
   const [menuOpen, setMenuOpen] = React.useState(null);
   const [mobileOpen, setMobileOpen] = React.useState(false);
   const [profileOpen, setProfileOpen] = React.useState(false);
+  const [authModalOpen, setAuthModalOpen] = React.useState(false);
+  const [authForm, setAuthForm] = React.useState({ name: "", email: "", phone: "" });
+  const [authOtp, setAuthOtp] = React.useState({ sent: false, code: "", userId: null, debug: "", status: "idle", error: null });
 
   const initial = (user?.name || user?.email || "U").trim().charAt(0).toUpperCase();
 
@@ -108,7 +113,83 @@ export default function FloatingNavBar() {
   const transparent = useHeroTransparent({ sentinelId: "hero-sentinel", fallbackOffset: 240 });
 
   // Prevent background scroll when mobile menu is open
-  useLockBodyScroll(mobileOpen);
+  useLockBodyScroll(mobileOpen || authModalOpen);
+
+  const resetAuthState = React.useCallback(() => {
+    setAuthForm({ name: "", email: "", phone: "" });
+    setAuthOtp({ sent: false, code: "", userId: null, debug: "", status: "idle", error: null });
+  }, []);
+
+  const openAuthModal = React.useCallback(() => {
+    resetAuthState();
+    setAuthModalOpen(true);
+  }, [resetAuthState]);
+
+  const closeAuthModal = React.useCallback(() => {
+    setAuthModalOpen(false);
+    resetAuthState();
+  }, [resetAuthState]);
+
+  const normalizePhone = (s = "") => s.replace(/[^\d+]/g, "");
+
+  const sendNavOtp = React.useCallback(async () => {
+    const name = authForm.name.trim() || "Guest";
+    const email = authForm.email.trim();
+    const phone = normalizePhone(authForm.phone);
+    if (!email && !phone) {
+      setAuthOtp((prev) => ({ ...prev, error: "Enter email or phone" }));
+      return;
+    }
+    try {
+      setAuthOtp((prev) => ({ ...prev, status: "sending", error: null }));
+      const payload = {
+        name,
+        channel: phone ? "sms" : "email",
+        createIfNotExists: true,
+      };
+      if (email) payload.email = email;
+      if (phone) payload.phone = phone;
+      const res = await api.post(endpoints.auth.otpSend(), payload);
+      setAuthOtp({
+        sent: true,
+        code: res?.otp || "",
+        userId: res?.user_id || null,
+        debug: res?.otp || "",
+        status: "sent",
+        error: null,
+      });
+    } catch (err) {
+      setAuthOtp((prev) => ({ ...prev, status: "idle", error: err?.message || "Failed to send OTP" }));
+    }
+  }, [authForm]);
+
+  const verifyNavOtp = React.useCallback(async () => {
+    const code = (authOtp.code || "").trim();
+    if (!code) {
+      setAuthOtp((prev) => ({ ...prev, error: "Enter OTP" }));
+      return;
+    }
+    try {
+      setAuthOtp((prev) => ({ ...prev, status: "verifying", error: null }));
+      const payload = { otp: code };
+      if (authOtp.userId) payload.user_id = authOtp.userId;
+      const email = authForm.email.trim();
+      const phone = normalizePhone(authForm.phone);
+      if (!authOtp.userId) {
+        if (email) payload.email = email;
+        if (phone) payload.phone = phone;
+      }
+      const res = await api.post(endpoints.auth.otpVerify(), payload);
+      if (res?.token) {
+        dispatch(setCredentials({ user: res.user || null, token: res.token, expires_at: res?.expires_at || null }));
+        closeAuthModal();
+      } else {
+        setAuthOtp((prev) => ({ ...prev, status: "idle", error: "Verification failed" }));
+      }
+    } catch (err) {
+      setAuthOtp((prev) => ({ ...prev, status: "idle", error: err?.message || "OTP verification failed" }));
+    }
+  }, [authOtp, authForm, closeAuthModal, dispatch]);
 
   return (
     <nav
@@ -231,21 +312,20 @@ export default function FloatingNavBar() {
             Contact Us
           </Link>
 
-          {!token ? (
+          {!token && (
             <button
-              className="inline-flex items-center rounded-full bg-blue-600 px-4 py-2 text-white text-sm hover:bg-blue-700"
-              onClick={() => navigate("/booking?auth=1")}
+              className="inline-flex items-center rounded-full border border-blue-600 px-4 py-2 text-blue-600 text-sm hover:bg-blue-50"
+              onClick={openAuthModal}
             >
-              🔐 Sign In / Book
-            </button>
-          ) : (
-            <button
-              className="inline-flex items-center rounded-full bg-blue-600 px-4 py-2 text-white text-sm hover:bg-blue-700"
-              onClick={() => navigate("/booking")}
-            >
-              🎟️ Book Tickets
+              🔐 Sign In
             </button>
           )}
+          <button
+            className={`inline-flex items-center rounded-full ${token ? "bg-blue-600" : "bg-gray-900"} px-4 py-2 text-white text-sm hover:opacity-90`}
+            onClick={() => navigate("/booking")}
+          >
+            🎟️ Book Tickets
+          </button>
 
           {token && (
             <div className="relative">
@@ -428,15 +508,99 @@ export default function FloatingNavBar() {
             Contact Us
           </Link>
 
+          {!token && (
+            <button
+              className="w-full py-2 border border-blue-600 text-blue-600 rounded-full hover:bg-blue-50"
+              onClick={() => {
+                setMobileOpen(false);
+                openAuthModal();
+              }}
+            >
+              🔐 Sign In
+            </button>
+          )}
           <button
             className="w-full py-2 bg-blue-600 text-white rounded-full hover:bg-blue-700"
             onClick={() => {
               setMobileOpen(false);
-              navigate(token ? "/booking" : "/booking?auth=1");
+              navigate("/booking");
             }}
           >
-            {token ? "🎟️ Book Tickets" : "🔐 Sign In / Book"}
+            🎟️ Book Tickets
           </button>
+        </div>
+      )}
+
+      {authModalOpen && (
+        <div className="fixed inset-0 z-[130] flex items-center justify-center px-4">
+          <div className="absolute inset-0 bg-black/50" onClick={closeAuthModal} />
+          <div className="relative bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 z-[140]">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Sign in to SnowCity</h3>
+              <button className="p-2 rounded-full bg-gray-100 text-gray-500" onClick={closeAuthModal}>
+                ✕
+              </button>
+            </div>
+            <p className="text-sm text-gray-500 mb-4">
+              Enter your details once. We&apos;ll create or find your profile and send an OTP (testing code 123456).
+            </p>
+            <div className="space-y-3">
+              <input
+                className="w-full p-3 rounded-xl border border-gray-200 focus:border-blue-500 outline-none"
+                placeholder="Full Name"
+                value={authForm.name}
+                onChange={(e) => setAuthForm((prev) => ({ ...prev, name: e.target.value }))}
+              />
+              <input
+                className="w-full p-3 rounded-xl border border-gray-200 focus:border-blue-500 outline-none"
+                placeholder="Email"
+                type="email"
+                value={authForm.email}
+                onChange={(e) => setAuthForm((prev) => ({ ...prev, email: e.target.value }))}
+              />
+              <input
+                className="w-full p-3 rounded-xl border border-gray-200 focus:border-blue-500 outline-none"
+                placeholder="Mobile"
+                type="tel"
+                value={authForm.phone}
+                onChange={(e) => setAuthForm((prev) => ({ ...prev, phone: e.target.value }))}
+              />
+              <button
+                className="w-full py-3 rounded-xl bg-gray-900 text-white font-semibold hover:bg-black disabled:opacity-60"
+                onClick={sendNavOtp}
+                disabled={authOtp.status === "sending"}
+              >
+                {authOtp.status === "sending" ? "Sending..." : authOtp.sent ? "Resend OTP" : "Send OTP"}
+              </button>
+              {authOtp.sent && (
+                <div className="flex gap-3 items-center">
+                  <input
+                    className="flex-1 p-3 rounded-xl border border-blue-200 focus:border-blue-500 outline-none text-center tracking-widest font-mono"
+                    maxLength={6}
+                    value={authOtp.code}
+                    onChange={(e) => setAuthOtp((prev) => ({ ...prev, code: e.target.value }))}
+                  />
+                  <button
+                    className="px-5 py-3 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700"
+                    onClick={verifyNavOtp}
+                    disabled={authOtp.status === "verifying"}
+                  >
+                    {authOtp.status === "verifying" ? "Verifying..." : "Verify"}
+                  </button>
+                </div>
+              )}
+              {authOtp.debug && (
+                <div className="text-xs text-green-700 bg-green-50 border border-green-100 rounded-xl p-2">
+                  Testing OTP: <span className="font-mono font-semibold">{authOtp.debug}</span>
+                </div>
+              )}
+              {authOtp.error && (
+                <div className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-xl p-2">
+                  {authOtp.error}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </nav>
