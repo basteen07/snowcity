@@ -67,7 +67,7 @@ const normalizePayphiInitiateResponse = (payload, bookingId) => {
 
   return {
     ...payload,
-    bookingId,
+    bookingId, // This is effectively the Order ID now
     responseCode,
     responseMessage,
     tranCtx,
@@ -76,42 +76,68 @@ const normalizePayphiInitiateResponse = (payload, bookingId) => {
   };
 };
 
-// Normalize a booking creation payload from various UI shapes
-const normalizeBookingCreatePayload = (p = {}) => {
-  const payload = { ...p };
-
-  // Normalize IDs
-  if (payload.attractionId && !payload.attraction_id) payload.attraction_id = payload.attractionId;
-  if (payload.slotId && !payload.slot_id) payload.slot_id = payload.slotId;
-  if (payload.comboId && !payload.combo_id) payload.combo_id = payload.comboId;
-  if (payload.comboSlotId && !payload.combo_slot_id) payload.combo_slot_id = payload.comboSlotId;
-
-  // Normalize quantities/dates/times
-  if (payload.qty && !payload.quantity) payload.quantity = payload.qty;
-  if (payload.date && !payload.booking_date) payload.booking_date = toYMD(payload.date);
-  if (payload.time && !payload.booking_time) payload.booking_time = payload.time;
-
-  // Normalize addons
-  if (Array.isArray(payload.addons)) {
-    payload.addons = payload.addons
-      .map((a) => ({
-        addon_id: a?.addon_id ?? a?.id ?? a?.addonId ?? a?.addonID ?? null,
-        quantity: a?.quantity ?? a?.qty ?? 1
-      }))
-      .filter((a) => a.addon_id != null);
+// --- HELPER: Extract ID from various casing possibilities ---
+const getVal = (obj, keys) => {
+  for (const k of keys) {
+    if (obj[k] !== undefined && obj[k] !== null && obj[k] !== '') return obj[k];
   }
-
-  // Ensure minimal fields
-  if (!payload.quantity) payload.quantity = 1;
-
-  return payload;
+  return null;
 };
 
-const normalizeBookingEntity = (raw) => {
-  const b = raw?.booking || raw || {};
-  const id = b.booking_id ?? b.id ?? b._id ?? b.bookingId ?? null;
-  const ref = b.booking_ref ?? b.reference ?? b.ref ?? null;
-  return { entity: b, id, ref };
+// --- FIX: Strict Whitelisting to prevent DB Constraint Violations ---
+const normalizeBookingCreatePayload = (p = {}) => {
+  // 1. Determine Type
+  const rawType = p.item_type || p.itemType || '';
+  const hasComboId = !!getVal(p, ['combo_id', 'comboId']);
+  const hasAttrId = !!getVal(p, ['attraction_id', 'attractionId']);
+
+  let isCombo = false;
+  if (rawType.toLowerCase() === 'combo') isCombo = true;
+  else if (hasComboId && !hasAttrId) isCombo = true;
+
+  // 2. Construct NEW clean object (Whitelist approach)
+  const clean = {
+    quantity: Number(getVal(p, ['quantity', 'qty']) || 1),
+    booking_date: toYMD(getVal(p, ['booking_date', 'date', 'bookingDate']) || new Date()),
+    // Pass through context
+    coupon_code: getVal(p, ['coupon_code', 'couponCode', 'code']),
+    offer_id: getVal(p, ['offer_id', 'offerId'])
+  };
+
+  if (isCombo) {
+    clean.item_type = 'Combo';
+    // STRICTLY SET ATTRACTION FIELDS TO NULL
+    clean.attraction_id = null;
+    clean.slot_id = null;
+    
+    // GET COMBO FIELDS
+    clean.combo_id = getVal(p, ['combo_id', 'comboId']);
+    clean.combo_slot_id = getVal(p, ['combo_slot_id', 'comboSlotId']);
+  } else {
+    clean.item_type = 'Attraction';
+    // STRICTLY SET COMBO FIELDS TO NULL
+    clean.combo_id = null;
+    clean.combo_slot_id = null;
+
+    // GET ATTRACTION FIELDS
+    clean.attraction_id = getVal(p, ['attraction_id', 'attractionId']);
+    clean.slot_id = getVal(p, ['slot_id', 'slotId']);
+  }
+
+  // 3. Normalize Addons
+  const rawAddons = p.addons || [];
+  if (Array.isArray(rawAddons)) {
+    clean.addons = rawAddons
+      .map((a) => ({
+        addon_id: getVal(a, ['addon_id', 'addonId', 'id']),
+        quantity: Number(getVal(a, ['quantity', 'qty']) || 0)
+      }))
+      .filter((a) => a.addon_id && a.quantity > 0);
+  } else {
+    clean.addons = [];
+  }
+
+  return clean;
 };
 
 const createInitialState = () => ({
@@ -123,10 +149,8 @@ const createInitialState = () => ({
     activeKey: null,
   },
 
-  // Contact details (helpful for forms and PayPhi initiate)
   contact: { name: '', email: '', phone: '' },
 
-  // OTP for auth via /api/auth/otp/*
   otp: {
     status: 'idle',
     sent: false,
@@ -136,16 +160,12 @@ const createInitialState = () => ({
     error: null
   },
 
-  // Coupon
   coupon: { code: '', discount: 0, data: null, status: 'idle', error: null },
 
-  // Single booking creation
-  creating: { status: 'idle', booking: null, booking_id: null, booking_ref: null, error: null },
+  creating: { status: 'idle', booking: null, booking_id: null, order_id: null, booking_ref: null, error: null },
 
-  // PayPhi payment context
   payphi: { status: 'idle', redirectUrl: null, tranCtx: null, response: null, error: null },
 
-  // Listings and status checks
   list: { status: 'idle', items: [], meta: null, error: null },
   statusCheck: { status: 'idle', success: false, response: null, error: null }
 });
@@ -177,7 +197,6 @@ const recomputeCartMeta = (cart) => {
 
 /* ============ Thunks ============ */
 
-// Send OTP (Auth endpoints)
 export const sendAuthOtp = createAsyncThunk(
   'bookings/sendAuthOtp',
   async ({ email, phone, channel = 'sms' }, { getState, rejectWithValue }) => {
@@ -202,7 +221,6 @@ export const sendAuthOtp = createAsyncThunk(
   }
 );
 
-// Verify OTP — if user_id present use it; otherwise fallback to email/phone
 export const verifyAuthOtp = createAsyncThunk(
   'bookings/verifyAuthOtp',
   async ({ otp }, { getState, dispatch, rejectWithValue }) => {
@@ -237,7 +255,6 @@ export const verifyAuthOtp = createAsyncThunk(
   }
 );
 
-// Coupon apply
 export const applyCoupon = createAsyncThunk(
   'bookings/applyCoupon',
   async ({ code, total_amount, onDate }, { rejectWithValue }) => {
@@ -248,38 +265,38 @@ export const applyCoupon = createAsyncThunk(
   }
 );
 
-// Create a single booking (no cart)
 export const createBooking = createAsyncThunk(
   'bookings/createBooking',
   async (payload, { rejectWithValue }) => {
     try {
+      let body;
+      // Normalize: accepts array or single object
       if (Array.isArray(payload)) {
-        const body = payload.map((item) => normalizeBookingCreatePayload(item));
-        const res = await api.post(endpoints.bookings.create(), body);
-        const rows = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
-        const bookings = rows.map((row) => {
-          const { entity, id, ref } = normalizeBookingEntity(row);
-          return { booking: entity, booking_id: id, booking_ref: ref };
-        });
-        return { bookings };
+        body = payload.map((item) => normalizeBookingCreatePayload(item));
+      } else {
+        body = normalizeBookingCreatePayload(payload);
       }
 
-      const body = normalizeBookingCreatePayload(payload);
+      // Backend now returns { order_id, order, bookings: [...] }
       const res = await api.post(endpoints.bookings.create(), body);
-      const { entity, id, ref } = normalizeBookingEntity(res);
-      return { booking: entity, booking_id: id, booking_ref: ref };
+      
+      // Fallback handling for different response shapes
+      const bookings = res.bookings || (Array.isArray(res) ? res : [res]);
+      const order_id = res.order_id || (bookings[0] && (bookings[0].order_id || bookings[0].booking_id)) || null;
+
+      return { bookings, order_id, order: res.order || null };
     } catch (err) {
       return rejectWithValue(err);
     }
   }
 );
 
-// PayPhi initiate
 export const initiatePayPhi = createAsyncThunk(
   'bookings/initiatePayPhi',
   async ({ bookingId, email, mobile }, { rejectWithValue }) => {
     try {
-      const res = await api.post(endpoints.payments.payphi.initiate(bookingId), {
+      // NOTE: 'bookingId' parameter here essentially represents the Order ID now
+      const res = await api.post(endpoints.bookings.payphi.initiate(bookingId), {
         email,
         mobile: normalizePhone(mobile)
       });
@@ -288,18 +305,17 @@ export const initiatePayPhi = createAsyncThunk(
   }
 );
 
-// PayPhi status
 export const checkPayPhiStatus = createAsyncThunk(
   'bookings/checkPayPhiStatus',
   async ({ bookingId }, { rejectWithValue }) => {
     try {
-      const res = await api.get(endpoints.payments.payphi.status(bookingId));
+      // NOTE: 'bookingId' parameter here essentially represents the Order ID now
+      const res = await api.get(endpoints.bookings.payphi.status(bookingId));
       return { bookingId, success: !!res?.success, response: res?.response || res };
     } catch (err) { return rejectWithValue(err); }
   }
 );
 
-// My bookings (list)
 export const listMyBookings = createAsyncThunk(
   'bookings/listMyBookings',
   async ({ page = 1, limit = 10 } = {}, { rejectWithValue }) => {
@@ -336,6 +352,7 @@ const bookingsSlice = createSlice({
       const allowMerge = payload.merge === undefined ? true : !!payload.merge;
       const existing = allowMerge ? state.cart.items.find((it) => it.fingerprint === fingerprint) : null;
       let createdKey = null;
+      
       if (existing) {
         existing.quantity += qty;
         existing.unitPrice = unitPrice || existing.unitPrice || 0;
@@ -345,14 +362,17 @@ const bookingsSlice = createSlice({
         createdKey = existing.key;
       } else {
         const itemKey = payload.key || makeCartItemId();
+        // IMPORTANT: Store distinct IDs for normalization later
         state.cart.items.push({
           key: itemKey,
           fingerprint,
           item_type: payload.item_type || payload.itemType || 'Attraction',
-          attraction_id: payload.attraction_id || payload.attractionId || null,
-          combo_id: payload.combo_id || payload.comboId || null,
-          slot_id: payload.slot_id || payload.slotId || null,
-          combo_slot_id: payload.combo_slot_id || payload.comboSlotId || null,
+          
+          attraction_id: getVal(payload, ['attraction_id', 'attractionId']),
+          combo_id: getVal(payload, ['combo_id', 'comboId']),
+          slot_id: getVal(payload, ['slot_id', 'slotId']),
+          combo_slot_id: getVal(payload, ['combo_slot_id', 'comboSlotId']),
+          
           booking_date: payload.booking_date || payload.date || null,
           slot: payload.slot || null,
           attraction: payload.attraction || null,
@@ -395,12 +415,12 @@ const bookingsSlice = createSlice({
     },
   },
   extraReducers: (b) => {
-    // OTP send
+    // OTP
     b.addCase(sendAuthOtp.pending, (s) => { s.otp.status = 'loading'; s.otp.sent = false; s.otp.error = null; });
     b.addCase(sendAuthOtp.fulfilled, (s, a) => {
       s.otp.status = 'succeeded';
       s.otp.sent = true;
-      s.otp.user_id = a.payload?.user_id || s.otp.user_id || null;
+      s.otp.user_id = a.payload?.user_id || s.otp.user_id;
       s.otp.identifier = a.payload?.identifier || s.otp.identifier;
     });
     b.addCase(sendAuthOtp.rejected, (s, a) => {
@@ -409,7 +429,6 @@ const bookingsSlice = createSlice({
       s.otp.sent = false;
     });
 
-    // OTP verify
     b.addCase(verifyAuthOtp.pending, (s) => { s.otp.status = 'loading'; s.otp.error = null; });
     b.addCase(verifyAuthOtp.fulfilled, (s, a) => {
       s.otp.status = 'succeeded';
@@ -438,19 +457,22 @@ const bookingsSlice = createSlice({
       s.creating.booking = null;
       s.creating.booking_id = null;
       s.creating.booking_ref = null;
+      s.creating.order_id = null;
     });
     b.addCase(createBooking.fulfilled, (s, a) => {
       s.creating.status = 'succeeded';
-      s.creating.booking = a.payload?.booking || null;
-      s.creating.booking_id = a.payload?.booking_id || null;
-      s.creating.booking_ref = a.payload?.booking_ref || null;
+      const first = a.payload?.bookings?.[0] || {};
+      s.creating.booking = first.booking || null;
+      s.creating.booking_id = first.booking_id || null;
+      s.creating.booking_ref = first.booking_ref || null;
+      s.creating.order_id = a.payload?.order_id || null;
     });
     b.addCase(createBooking.rejected, (s, a) => {
       s.creating.status = 'failed';
       s.creating.error = toErr(a.payload || a.error, 'Failed to create booking');
     });
 
-    // PayPhi initiate
+    // PayPhi
     b.addCase(initiatePayPhi.pending, (s) => { s.payphi.status = 'loading'; s.payphi.error = null; s.payphi.redirectUrl = null; s.payphi.tranCtx = null; s.payphi.response = null; });
     b.addCase(initiatePayPhi.fulfilled, (s, a) => {
       s.payphi.status = 'succeeded';
@@ -461,7 +483,7 @@ const bookingsSlice = createSlice({
     });
     b.addCase(initiatePayPhi.rejected, (s, a) => { s.payphi.status = 'failed'; s.payphi.error = toErr(a.payload || a.error, 'Failed to initiate payment'); });
 
-    // PayPhi status check
+    // PayPhi Status
     b.addCase(checkPayPhiStatus.pending, (s) => { s.statusCheck.status = 'loading'; s.statusCheck.error = null; s.statusCheck.success = false; s.statusCheck.response = null; });
     b.addCase(checkPayPhiStatus.fulfilled, (s, a) => {
       s.statusCheck.status = 'succeeded';
@@ -470,7 +492,7 @@ const bookingsSlice = createSlice({
     });
     b.addCase(checkPayPhiStatus.rejected, (s, a) => { s.statusCheck.status = 'failed'; s.statusCheck.error = toErr(a.payload || a.error, 'Failed to check payment status'); });
 
-    // My bookings
+    // List
     b.addCase(listMyBookings.pending, (s) => { s.list.status = 'loading'; s.list.error = null; });
     b.addCase(listMyBookings.fulfilled, (s, a) => { s.list.status = 'succeeded'; s.list.items = a.payload?.items || []; s.list.meta = a.payload?.meta || null; });
     b.addCase(listMyBookings.rejected, (s, a) => { s.list.status = 'failed'; s.list.error = toErr(a.payload || a.error, 'Failed to load bookings'); });

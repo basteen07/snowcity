@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import dayjs from 'dayjs';
 import {
@@ -8,157 +8,113 @@ import {
 } from '../features/bookings/bookingsSlice';
 import { formatCurrency } from '../utils/formatters';
 import { absoluteUrl } from '../utils/media';
+import { ChevronDown, ChevronUp, FileText, RefreshCcw, CreditCard, CheckCircle, AlertCircle, Clock } from 'lucide-react';
 
-function Pill({ text, tone }) {
+/* ========== Helpers ========== */
+const Pill = ({ text, tone }) => {
   const map = {
-    green: 'bg-green-100 text-green-700',
-    red: 'bg-red-100 text-red-700',
-    yellow: 'bg-yellow-100 text-yellow-800',
-    gray: 'bg-gray-100 text-gray-700',
-    blue: 'bg-blue-100 text-blue-700'
+    green: 'bg-green-100 text-green-700 border-green-200',
+    red: 'bg-red-100 text-red-700 border-red-200',
+    yellow: 'bg-yellow-100 text-yellow-800 border-yellow-200',
+    gray: 'bg-gray-100 text-gray-700 border-gray-200',
+    blue: 'bg-blue-100 text-blue-700 border-blue-200'
   };
-  return <span className={`px-2 py-1 rounded-full text-xs ${map[tone] || map.gray}`}>{text}</span>;
-}
-
-/* ========== Money helpers ========== */
-const getAddonsTotal = (b) => {
-  try {
-    if (Array.isArray(b?.booking_addons)) {
-      return b.booking_addons.reduce((sum, a) => sum + Number(a.price || 0) * Number(a.quantity || 0), 0);
-    }
-    if (Array.isArray(b?.addons)) {
-      return b.addons.reduce((sum, a) => sum + Number(a.price || 0) * Number(a.quantity || 0), 0);
-    }
-  } catch {}
-  return Number(b?.addons_total || 0);
-};
-const getDiscount = (b) => Number(b?.discount_amount || 0);
-const getTotal = (b) => Number(b?.final_amount ?? b?.total_amount ?? b?.amount ?? 0);
-const getTicketsSubtotal = (b) => {
-  const total = getTotal(b);
-  const discount = getDiscount(b);
-  const addons = getAddonsTotal(b);
-  const t = (total + discount) - addons;
-  return t >= 0 ? t : total;
+  return <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium border ${map[tone] || map.gray}`}>{text}</span>;
 };
 
-/* ========== Display helpers ========== */
-const fmtDate = (d) => {
-  try { return d ? dayjs(d).format('DD MMM YYYY') : '—'; } catch { return d || '—'; }
-};
-const hhmm = (raw) => {
-  const s = String(raw || '');
-  const m = s.match(/(\d{1,2}):(\d{2})/);
-  if (!m) return null;
-  const hh = String(m[1]).padStart(2, '0');
-  const mm = m[2];
-  return `${hh}:${mm}`;
-};
-const getSlotTiming = (b) => {
-  const start = hhmm(b?.slot_start_time);
-  const end = hhmm(b?.slot_end_time);
-  if (start || end) return `${start || ''}${start && end ? ' - ' : ''}${end || ''}`;
-  if (b?.slot_label) return String(b.slot_label);
-  const fallback = hhmm(b?.booking_time);
-  return fallback || '—';
-};
-const getQuantityLabel = (b) => {
-  const q = Number(b?.quantity || b?.qty || 1);
-  const n = Number.isFinite(q) && q > 0 ? q : 1;
-  return `${n} ticket${n > 1 ? 's' : ''}`;
-};
-const paymentTone = (status) => {
+const statusConfig = (status) => {
   const u = String(status || '').trim().toUpperCase();
-  if (['COMPLETED', 'SUCCESS', 'PAID'].includes(u)) return { tone: 'green', label: 'Completed' };
-  if (['FAILED', 'DECLINED', 'CANCELLED', 'CANCELED', 'EXPIRED'].includes(u)) return { tone: 'red', label: 'Failed' };
-  if (['PENDING', 'INITIATED', 'PROCESSING', 'IN_PROGRESS', 'INPROGRESS'].includes(u)) return { tone: 'yellow', label: 'Pending' };
-  return { tone: 'gray', label: u || '—' };
+  if (['COMPLETED', 'SUCCESS', 'PAID', 'CONFIRMED'].includes(u)) return { tone: 'green', icon: CheckCircle, label: 'Paid' };
+  if (['FAILED', 'DECLINED', 'CANCELLED', 'CANCELED'].includes(u)) return { tone: 'red', icon: AlertCircle, label: 'Failed' };
+  return { tone: 'yellow', icon: Clock, label: 'Pending' };
 };
-const bookingTone = (status) => {
-  const u = String(status || '').trim().toUpperCase();
-  if (['CANCELLED', 'CANCELED'].includes(u)) return { tone: 'red', label: 'Cancelled' };
-  if (['REDEEMED'].includes(u)) return { tone: 'blue', label: 'Redeemed' };
-  if (['BOOKED', 'CONFIRMED', 'ACTIVE'].includes(u)) return { tone: 'green', label: u[0] + u.slice(1).toLowerCase() };
-  return { tone: 'gray', label: u || '—' };
-};
+
 const normalizePayphiMobile = (s) => {
   const digits = String(s || '').replace(/\D/g, '');
   if (digits.length >= 10) return digits.slice(-10);
   return digits;
 };
 
+// Format '14:30:00' to '2:30 PM'
+const formatTime = (timeStr) => {
+  if (!timeStr) return '';
+  const [h, m] = String(timeStr).split(':');
+  if (!h || !m) return '';
+  const hour = parseInt(h, 10);
+  const ampm = hour >= 12 ? 'PM' : 'AM';
+  const h12 = hour % 12 || 12;
+  return `${h12}:${m} ${ampm}`;
+};
+
+// Get nice slot label
+const getSlotDisplay = (item) => {
+  // Try to get explicit times first
+  const start = formatTime(item.slot_start_time || item.start_time);
+  const end = formatTime(item.slot_end_time || item.end_time);
+  
+  if (start && end) return `${start} - ${end}`;
+  if (start) return start;
+  if (item.slot_label) return item.slot_label;
+  
+  // Fallback to booking_time if slot is missing
+  return formatTime(item.booking_time) || 'Slot Time';
+};
+
+/* ========== Component ========== */
 export default function MyBookings() {
   const dispatch = useDispatch();
-  const { status, items, meta, error } = useSelector((s) => s.bookings.list);
-  const statusCheck = useSelector((s) => s.bookings.statusCheck);
+  const { status, items, error } = useSelector((s) => s.bookings.list);
   const payphi = useSelector((s) => s.bookings.payphi);
   const user = useSelector((s) => s.auth?.user);
 
-  const [page, setPage] = React.useState(1);
-  const [retryRow, setRetryRow] = React.useState(null);
-  const [payEmail, setPayEmail] = React.useState('');
-  const [payMobile, setPayMobile] = React.useState('');
+  // Group items by Order ID and Calculate Totals Correctly
+  const orders = useMemo(() => {
+    if (!Array.isArray(items)) return [];
+    
+    const grouped = new Map();
+    
+    items.forEach(item => {
+      const key = item.order_id || item.booking_id || item.id;
+      
+      if (!grouped.has(key)) {
+        grouped.set(key, {
+          id: key,
+          ref: item.order_ref || item.booking_ref, // Prefer Order Ref
+          date: item.created_at,
+          status: item.payment_status,
+          items: [],
+          calculatedTotal: 0 // Initialize total
+        });
+      }
+      
+      const order = grouped.get(key);
+      order.items.push(item);
+      
+      // Sum up the individual item prices to get the true Order Total
+      // item.final_amount is usually the price for that specific booking row
+      const itemPrice = Number(item.final_amount || item.total_amount || 0);
+      order.calculatedTotal += itemPrice;
+    });
 
-  React.useEffect(() => { dispatch(listMyBookings({ page: 1, limit: 10 })); }, [dispatch]);
+    // Convert Map to Array and Sort by Date Descending
+    return Array.from(grouped.values()).sort((a,b) => new Date(b.date) - new Date(a.date));
+  }, [items]);
 
-  React.useEffect(() => {
+  const [expandedOrder, setExpandedOrder] = useState(null);
+  const [retryOrder, setRetryOrder] = useState(null);
+  const [payEmail, setPayEmail] = useState('');
+  const [payMobile, setPayMobile] = useState('');
+
+  useEffect(() => { dispatch(listMyBookings({ page: 1, limit: 50 })); }, [dispatch]);
+
+  useEffect(() => {
     setPayEmail(user?.email || '');
     setPayMobile(user?.phone || '');
   }, [user]);
 
-  const refresh = () => {
-    setPage(1);
-    dispatch(listMyBookings({ page: 1, limit: 10 }));
-  };
+  const refresh = () => dispatch(listMyBookings({ page: 1, limit: 50 }));
 
-  const loadMore = () => {
-    const next = page + 1;
-    setPage(next);
-    dispatch(listMyBookings({ page: next, limit: 10 }));
-  };
-
-  const hasMore = (() => {
-    if (!meta) return false;
-    if (typeof meta.totalPages === 'number' && typeof meta.page === 'number') return meta.page < meta.totalPages;
-    if (typeof meta.total_pages === 'number' && typeof meta.page === 'number') return meta.page < meta.total_pages;
-    if (typeof meta.hasNext === 'boolean') return meta.hasNext;
-    if (typeof meta.count === 'number' && typeof meta.limit === 'number') {
-      return Array.isArray(items) && items.length === meta.limit;
-    }
-    return false;
-  })();
-
-  const showPayphiError = React.useCallback((title = 'Payment initiation failed', payload = null) => {
-    if (!payload) {
-      alert(`${title}. Please try again later.`);
-      return;
-    }
-    const code =
-      payload?.responseCode ||
-      payload?.code ||
-      payload?.status ||
-      payload?.data?.code ||
-      payload?.response?.responseCode ||
-      payload?.response?.code ||
-      null;
-    const message =
-      payload?.responseMessage ||
-      payload?.message ||
-      payload?.data?.message ||
-      payload?.response?.responseMessage ||
-      payload?.response?.message ||
-      payload?.error ||
-      null;
-
-    let detail = '';
-    if (code) detail += `[${code}]`;
-    if (message) detail += `${detail ? ' ' : ''}${message}`;
-
-    const text = detail ? `${title}: ${detail}` : `${title}. Please try again later.`;
-    alert(text);
-  }, []);
-
-  const onRetry = async (b) => {
+  const onRetry = async (order) => {
     const email = (payEmail || user?.email || '').trim();
     const mobile = normalizePayphiMobile(payMobile || user?.phone || '');
 
@@ -167,219 +123,203 @@ export default function MyBookings() {
       return;
     }
 
-    const res = await dispatch(
-      initiatePayPhi({ bookingId: b.booking_id || b.id, email, mobile })
-    )
-      .unwrap()
-      .catch((err) => {
-        showPayphiError('Payment initiation failed', err);
-        return null;
-      });
-    if (!res) return;
-
-    const resp = (res && typeof res === 'object' && (res.response || res.raw)) || res || {};
-    const tx = res?.tranCtx || res?.tranctx || resp?.tranCtx || resp?.tranctx || resp?.response?.tranCtx || resp?.response?.tranctx || null;
-    let redirectUrl =
-      res?.redirectUrl ||
-      res?.redirectURL ||
-      res?.redirectUri ||
-      resp?.redirectUrl ||
-      resp?.redirectURL ||
-      resp?.redirectUri ||
-      resp?.redirectURI ||
-      null;
-
-    if (redirectUrl && tx && !String(redirectUrl).includes('tranCtx=')) {
-      const sep = redirectUrl.includes('?') ? '&' : '?';
-      redirectUrl = `${redirectUrl}${sep}tranCtx=${encodeURIComponent(tx)}`;
+    try {
+        // Pass Order ID to initiate payment
+        const res = await dispatch(initiatePayPhi({ bookingId: order.id, email, mobile })).unwrap();
+        if (res?.redirectUrl) {
+            window.location.href = res.redirectUrl;
+        } else {
+            alert('Payment initiation failed. Please try again.');
+        }
+    } catch (err) {
+        alert(`Payment failed: ${err.message || 'Unknown error'}`);
     }
-
-    if (redirectUrl) {
-      window.location.href = redirectUrl;
-      return;
-    }
-
-    showPayphiError('Payment initiation failed', res);
   };
 
-  const onCheckStatus = async (b) => {
-    await dispatch(checkPayPhiStatus({ bookingId: b.booking_id || b.id }))
-      .unwrap()
-      .catch(() => {});
-    // Optionally refresh the list after checking
+  const onCheckStatus = async (orderId) => {
+    await dispatch(checkPayPhiStatus({ bookingId: orderId })).unwrap();
     refresh();
   };
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-8">
-      <div className="flex items-center justify-between">
+    <div className="max-w-4xl mx-auto px-4 py-8">
+      <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-semibold mb-2">My Bookings</h1>
-          <p className="text-gray-600 mb-6">View your ticket history, check status, retry payment, or download tickets.</p>
+          <h1 className="text-2xl font-bold text-gray-900">My Orders</h1>
+          <p className="text-gray-500 text-sm">Track your tickets and payment status</p>
         </div>
         <button
-          className="h-9 rounded-full border px-4 text-sm"
           onClick={refresh}
           disabled={status === 'loading'}
-          title="Refresh"
+          className="p-2 rounded-full hover:bg-gray-100 text-gray-600 transition-colors"
+          title="Refresh List"
         >
-          {status === 'loading' ? 'Refreshing…' : 'Refresh'}
+          <RefreshCcw size={20} className={status === 'loading' ? 'animate-spin' : ''} />
         </button>
       </div>
 
-      {status === 'loading' && !items.length ? (
-        <div className="py-10 text-center">
-          <div className="h-6 w-6 border-2 border-gray-300 border-t-blue-500 rounded-full animate-spin mx-auto" />
+      {status === 'failed' && (
+        <div className="bg-red-50 text-red-700 p-4 rounded-lg mb-6 text-sm text-center">
+          {error?.message || 'Failed to load orders.'}
         </div>
-      ) : null}
+      )}
 
-      {status === 'failed' ? (
-        <div className="py-6 text-center text-red-600">{(error && error.message) || 'Failed to load bookings.'}</div>
-      ) : null}
+      {status === 'succeeded' && orders.length === 0 && (
+        <div className="text-center py-12 bg-gray-50 rounded-2xl border border-dashed border-gray-300">
+          <p className="text-gray-500">No orders found.</p>
+        </div>
+      )}
 
-      <div className="space-y-4">
-        {items.map((b, idx) => {
-          const id = b.booking_id || b.id || idx;
-
-          // Must-show fields
-          const title = b.item_title || b.attraction_title || b.combo_title || 'Attraction';
-          const dateLabel = fmtDate(b.booking_date || b.date || b.visit_date);
-          const slotTiming = getSlotTiming(b);
-          const qtyLabel = getQuantityLabel(b);
-
-          const payMeta = paymentTone(b?.payment_status);
-          const bookMeta = bookingTone(b?.booking_status);
-
-          const addonsTotal = getAddonsTotal(b);
-          const discount = getDiscount(b);
-          const ticketsSubtotal = getTicketsSubtotal(b);
-          const total = getTotal(b);
-
-          const canPay = payMeta.label !== 'Completed' && bookMeta.label !== 'Cancelled';
-          const ticketUrl = b?.ticket_pdf || b?.ticket_pdf_url || b?.ticket_url || null;
-          const ticketAbs = ticketUrl ? absoluteUrl(ticketUrl) : null;
+      <div className="space-y-6">
+        {orders.map((order) => {
+          const meta = statusConfig(order.status);
+          const Icon = meta.icon;
+          const isExpanded = expandedOrder === order.id;
+          const isRetry = retryOrder === order.id;
+          const canPay = meta.label === 'Pending';
 
           return (
-            <div key={`bk-${id}`} className="rounded-xl border bg-white p-4 shadow-sm">
-              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
-                <div>
-                  <div className="text-gray-900 font-medium">
-                    #{b.booking_ref || id} — {title}
-                    {b.item_type ? (
-                      <span className="ml-2 text-xs rounded-full px-2 py-0.5 border text-gray-700">
-                        {b.item_type}
-                      </span>
-                    ) : null}
+            <div key={order.id} className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden transition-all hover:shadow-md">
+              
+              {/* Order Header (Click to Expand) */}
+              <div className="p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 cursor-pointer select-none" onClick={() => setExpandedOrder(isExpanded ? null : order.id)}>
+                <div className="flex items-start gap-4">
+                  <div className={`p-3 rounded-full ${meta.tone === 'green' ? 'bg-green-50 text-green-600' : meta.tone === 'red' ? 'bg-red-50 text-red-600' : 'bg-yellow-50 text-yellow-600'}`}>
+                    <Icon size={24} />
                   </div>
-                  <div className="text-sm text-gray-600">
-                    {dateLabel} • {slotTiming} • {qtyLabel}
-                  </div>
-                  {(b.offer_code || b.offer_title) ? (
-                    <div className="text-xs text-gray-500 mt-1">
-                      Offer: {b.offer_code || b.offer_title}
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg font-bold text-gray-900">Order #{order.ref}</span>
+                      <Pill text={meta.label} tone={meta.tone} />
                     </div>
-                  ) : null}
+                    <div className="text-sm text-gray-500 mt-1">
+                      {dayjs(order.date).format('DD MMM YYYY • h:mm A')}
+                    </div>
+                    <div className="text-sm text-gray-600 mt-1">
+                      {order.items.length} Item{order.items.length !== 1 && 's'}
+                    </div>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <div className="text-lg font-semibold">{formatCurrency(total)}</div>
-                  <div className="mt-1 flex flex-wrap items-center gap-2 justify-end">
-                    <Pill text={`Pay: ${b.payment_status || '—'}`} tone={payMeta.tone} />
-                    {b?.booking_status ? <Pill text={`Booking: ${b.booking_status}`} tone={bookMeta.tone} /> : null}
+
+                <div className="flex items-center justify-between md:justify-end gap-6 w-full md:w-auto">
+                  <div className="text-right">
+                    <div className="text-xs text-gray-500 uppercase font-semibold mb-1">Total</div>
+                    <div className="text-2xl font-bold text-gray-900">{formatCurrency(order.calculatedTotal)}</div>
+                  </div>
+                  <div className="text-gray-400">
+                    {isExpanded ? <ChevronUp size={24} /> : <ChevronDown size={24} />}
                   </div>
                 </div>
               </div>
 
-              <div className="mt-3 grid grid-cols-1 md:grid-cols-4 gap-2 text-sm">
-                <div className="rounded-md border p-2 flex items-center justify-between">
-                  <span className="text-gray-600">Tickets</span>
-                  <span className="font-medium">{formatCurrency(ticketsSubtotal)}</span>
-                </div>
-                <div className="rounded-md border p-2 flex items-center justify-between">
-                  <span className="text-gray-600">Add-ons</span>
-                  <span className="font-medium">{formatCurrency(addonsTotal)}</span>
-                </div>
-                <div className="rounded-md border p-2 flex items-center justify-between">
-                  <span className="text-gray-600">Discount</span>
-                  <span className="font-medium">- {formatCurrency(discount)}</span>
-                </div>
-                <div className="rounded-md border p-2 flex items-center justify-between">
-                  <span className="text-gray-600">Total</span>
-                  <span className="font-semibold">{formatCurrency(total)}</span>
-                </div>
-              </div>
+              {/* Expanded Details (Order Items) */}
+              {isExpanded && (
+                <div className="border-t border-gray-100 bg-gray-50/50 p-5 animate-slide-down">
+                  <h4 className="text-xs font-bold text-gray-500 uppercase mb-3">Order Items</h4>
+                  <div className="space-y-3">
+                    {order.items.map((item, idx) => {
+                        const slotStr = getSlotDisplay(item);
+                        const itemTotal = Number(item.final_amount || item.total_amount || 0);
 
-              <div className="mt-4 flex flex-wrap gap-2">
-                {ticketAbs && payMeta.label === 'Completed' ? (
-                  <a className="rounded-full border px-4 py-2 text-sm" href={ticketAbs} target="_blank" rel="noopener noreferrer">
-                    Download Ticket
-                  </a>
-                ) : null}
+                        return (
+                          <div key={idx} className="bg-white p-4 rounded-lg border border-gray-200 flex flex-col md:flex-row md:items-center justify-between gap-2">
+                            <div>
+                              <div className="font-medium text-gray-800 text-base">
+                                {item.item_title || item.attraction_title || item.combo_title || 'Ticket'}
+                              </div>
+                              <div className="text-sm text-gray-500 mt-1 flex items-center gap-2">
+                                <span>{dayjs(item.booking_date).format('DD MMM')}</span>
+                                <span className="w-1 h-1 rounded-full bg-gray-300"></span>
+                                <span>{slotStr}</span>
+                                <span className="w-1 h-1 rounded-full bg-gray-300"></span>
+                                <span>Qty: {item.quantity}</span>
+                              </div>
+                            </div>
+                            <div className="font-bold text-gray-900">
+                              {formatCurrency(itemTotal)}
+                            </div>
+                          </div>
+                        );
+                    })}
+                  </div>
 
-                <button className="rounded-full border px-4 py-2 text-sm" onClick={() => onCheckStatus(b)} title="Check payment status">
-                  Check Status
-                </button>
-
-                {canPay ? (
-                  <button className="rounded-full bg-blue-600 text-white px-4 py-2 text-sm" onClick={() => setRetryRow(retryRow === id ? null : id)}>
-                    Pay Now
-                  </button>
-                ) : null}
-              </div>
-
-              {retryRow === id ? (
-                <div className="mt-4 rounded-lg border p-3 bg-gray-50">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    <div>
-                      <label className="block text-xs text-gray-600 mb-1">Email</label>
-                      <input
-                        className="w-full rounded-md border px-3 py-2"
-                        type="email"
-                        value={payEmail}
-                        onChange={(e) => setPayEmail(e.target.value)}
-                        placeholder="you@example.com"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-gray-600 mb-1">Mobile</label>
-                      <input
-                        className="w-full rounded-md border px-3 py-2"
-                        type="tel"
-                        value={payMobile}
-                        onChange={(e) => setPayMobile(e.target.value)}
-                        placeholder="10-digit mobile"
-                      />
-                    </div>
-                    <div className="flex items-end">
-                      <button
-                        className="w-full rounded-md bg-gray-900 text-white px-3 py-2 text-sm hover:bg-black disabled:opacity-50"
-                        disabled={payphi.status === 'loading'}
-                        onClick={() => onRetry(b)}
+                  {/* Action Buttons */}
+                  <div className="mt-6 flex flex-wrap gap-3 border-t border-gray-200 pt-4">
+                    {meta.label === 'Paid' && (
+                      <a 
+                        href={absoluteUrl(order.items[0]?.ticket_pdf)} 
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
                       >
-                        {payphi.status === 'loading' ? 'Processing…' : 'Proceed to Pay'}
+                        <FileText size={18} /> Download Ticket(s)
+                      </a>
+                    )}
+                    
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); onCheckStatus(order.id); }}
+                      className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                    >
+                      <RefreshCcw size={18} /> Check Status
+                    </button>
+
+                    {canPay && !isRetry && (
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); setRetryOrder(order.id); }}
+                        className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm ml-auto"
+                      >
+                        <CreditCard size={18} /> Pay Now
                       </button>
-                    </div>
+                    )}
                   </div>
-                  {statusCheck.status === 'loading' ? (
-                    <div className="text-xs text-gray-600 mt-2">Checking status…</div>
-                  ) : null}
+
+                  {/* Retry Payment Form */}
+                  {isRetry && (
+                    <div className="mt-4 bg-white border border-blue-100 rounded-xl p-4 shadow-sm animate-in fade-in slide-in-from-top-2">
+                      <h5 className="text-sm font-bold text-gray-800 mb-3">Complete Payment for Order #{order.ref}</h5>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                        <div>
+                            <label className="block text-xs text-gray-500 mb-1">Email</label>
+                            <input 
+                              type="email" 
+                              className="w-full p-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                              value={payEmail}
+                              onChange={e => setPayEmail(e.target.value)}
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-xs text-gray-500 mb-1">Mobile</label>
+                            <input 
+                              type="tel" 
+                              className="w-full p-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                              value={payMobile}
+                              onChange={e => setPayMobile(e.target.value)}
+                            />
+                        </div>
+                      </div>
+                      <div className="flex gap-3">
+                        <button 
+                          onClick={() => onRetry(order)}
+                          disabled={payphi.status === 'loading'}
+                          className="px-6 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 shadow-md transition-all"
+                        >
+                          {payphi.status === 'loading' ? 'Processing...' : 'Proceed to Payment Gateway'}
+                        </button>
+                        <button 
+                          onClick={() => setRetryOrder(null)}
+                          className="px-4 py-2 text-gray-500 text-sm hover:text-gray-700 font-medium"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              ) : null}
+              )}
             </div>
           );
         })}
       </div>
-
-      {hasMore ? (
-        <div className="mt-6 flex justify-center">
-          <button className="rounded-full border px-5 py-2 text-sm" onClick={loadMore} disabled={status === 'loading'}>
-            {status === 'loading' ? 'Loading…' : 'Load more'}
-          </button>
-        </div>
-      ) : null}
-
-      {!items.length && status === 'succeeded' ? (
-        <div className="py-12 text-center text-gray-500">No bookings yet.</div>
-      ) : null}
     </div>
   );
 }

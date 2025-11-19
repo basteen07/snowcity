@@ -1,16 +1,18 @@
 import axios from 'axios';
 
+// 1. Environment Configuration
 const API_BASE_URL = import.meta.env?.VITE_API_BASE_URL || 'http://localhost:4000';
+
 if (!API_BASE_URL && import.meta.env?.DEV) {
   // eslint-disable-next-line no-console
-  console.warn('VITE_API_BASE_URL is not set. Requests will go to the current origin. Use a Vite proxy or set the env var.');
+  console.warn('VITE_API_BASE_URL is not set. Using default: http://localhost:4000');
 }
 
 const SESSION_STORAGE_KEY = 'snow_session_id';
 let guestSessionId = null;
-
 const isBrowser = typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
 
+// 2. Session Management
 const generateSessionId = () => `snow-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
 const ensureGuestSessionId = () => {
@@ -42,18 +44,18 @@ export function getGuestSessionId() {
   return ensureGuestSessionId();
 }
 
-// Core axios instance
+// 3. Axios Instance
 const http = axios.create({
   baseURL: API_BASE_URL,
   timeout: 20000,
-  withCredentials: false,
+  withCredentials: false, // Set to true if using Cookies, false for Bearer token
   headers: {
     'Content-Type': 'application/json',
     Accept: 'application/json'
   }
 });
 
-// Auth plumbing
+// 4. Auth State
 let authToken = null;
 let authHandlers = {
   getToken: () => authToken,
@@ -69,43 +71,23 @@ export function setAuthHandlers({ getToken, onUnauthorized } = {}) {
   if (typeof onUnauthorized === 'function') authHandlers.onUnauthorized = onUnauthorized;
 }
 
-export function setLanguage(lang) {
-  if (lang) http.defaults.headers['Accept-Language'] = lang;
-}
-
-export function setBaseURL(url) {
-  if (url) http.defaults.baseURL = url;
-}
-
-// Helpers
-const genReqId = () =>
-  Math.random().toString(36).slice(2) + Date.now().toString(36);
+// 5. Helpers
+const genReqId = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
 
 const isTransientNetworkError = (err) => {
   const code = err?.code;
   const status = err?.response?.status;
   return (
     !status && (
-      code === 'ECONNABORTED' || // timeout
-      code === 'ERR_NETWORK' ||  // network offline
+      code === 'ECONNABORTED' || 
+      code === 'ERR_NETWORK' ||  
       code === 'ENETUNREACH' ||
       code === 'EAI_AGAIN'
     )
   );
 };
 
-// Fallback helper: some backends mounted public routers under '/api/api/*'.
-// If we get 404 for GET '/api/...', retry once with '/api/api/...'
-const withDoubleApiPath = (path) => {
-  if (!path || typeof path !== 'string') return path;
-  // Only adjust relative API paths
-  if (!path.startsWith('/')) return path;
-  if (path.startsWith('/api/api/')) return path; // already doubled
-  if (path.startsWith('/api/')) return `/api${path}`;
-  return path;
-};
-
-// IMPORTANT: sanitize to serializable error object
+// normalizeApiError: Ensures the UI gets a consistent error object
 const normalizeApiError = (error) => {
   if (axios.isCancel(error)) {
     return {
@@ -116,63 +98,70 @@ const normalizeApiError = (error) => {
       data: null
     };
   }
+  
   const response = error?.response;
   const data = response?.data;
-  const status = response?.status || 0;
+  
+  // Try to find a human-readable message from backend
   const message =
-    (data && (data.message || data.error)) ||
-    error?.message ||
-    'Request failed';
+    data?.message || 
+    data?.error || 
+    error?.message || 
+    'An unexpected error occurred';
+
   const code =
-    (data && data.code) ||
+    data?.code ||
     response?.headers?.['x-error-code'] ||
     error?.code ||
     null;
 
-  // Only serializable fields
-  const out = {
+  return {
     message,
-    status,
+    status: response?.status || 0,
     code,
     data: typeof data === 'object' ? data : null
   };
-
-  // Tiny dev hint (still serializable)
-  if (import.meta.env?.DEV) {
-    out.debug = String(error?.message || '');
-  }
-  return out;
 };
 
-// Interceptors
+// 6. Interceptors
+
+// REQUEST Interceptor
 http.interceptors.request.use((config) => {
   config.headers = config.headers || {};
   config.headers['X-Request-Id'] = genReqId();
-  // config.headers['X-Client'] = 'snowcity-web';
 
+  // Attach Token
   const token = (authHandlers.getToken && authHandlers.getToken()) || authToken;
   if (token) config.headers.Authorization = `Bearer ${token}`;
 
+  // Attach Guest Session
   if (!config.headers['X-Session-Id']) {
     const sessionId = ensureGuestSessionId();
     if (sessionId) config.headers['X-Session-Id'] = sessionId;
   }
-  return config;
-});
 
+  // Debug Logging (Dev only)
+  if (import.meta.env?.DEV) {
+    // console.debug(`[API Req] ${config.method?.toUpperCase()} ${config.url}`, config.data || config.params || '');
+  }
+
+  return config;
+}, (error) => Promise.reject(error));
+
+// RESPONSE Interceptor
 http.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    if (import.meta.env?.DEV) {
+      // console.debug(`[API Res] ${response.status} ${response.config.url}`);
+    }
+    return response;
+  },
   async (error) => {
     const cfg = error?.config || {};
     const status = error?.response?.status;
 
-    // One retry for transient GET network errors
-    if (
-      cfg &&
-      cfg.method === 'get' &&
-      !cfg._retry &&
-      isTransientNetworkError(error)
-    ) {
+    // A) Retry logic for transient network errors (GET only)
+    if (cfg && cfg.method === 'get' && !cfg._retry && isTransientNetworkError(error)) {
       cfg._retry = true;
       try {
         return await http(cfg);
@@ -181,68 +170,58 @@ http.interceptors.response.use(
       }
     }
 
-    // Fallback: some servers expose endpoints at '/api/api/*' (double /api).
-    // If a GET to '/api/*' returned 404, retry once with '/api/api/*'.
-    if (
-      status === 404 &&
-      cfg &&
-      cfg.method === 'get' &&
-      !cfg._apiPathFallback &&
-      typeof cfg.url === 'string' &&
-      cfg.url.startsWith('/api/') &&
-      !cfg.url.startsWith('/api/api/')
-    ) {
-      const alt = withDoubleApiPath(cfg.url);
-      if (alt && alt !== cfg.url) {
-        const altCfg = { ...cfg, url: alt, _apiPathFallback: true };
-        try {
-          return await http(altCfg);
-        } catch (e) {
-          error = e;
-        }
+    // B) 401 Unauthorized Handling (Centralized)
+    // Skips auth-related endpoints to prevent infinite loops
+    if (status === 401) {
+      const url = cfg.url || '';
+      const isAuthEndpoint = /\/api\/auth\//.test(url);
+      if (!isAuthEndpoint && typeof authHandlers.onUnauthorized === 'function') {
+        try { await authHandlers.onUnauthorized(); } catch { /* ignore */ }
       }
     }
 
-    // Centralized 401 handling (skip auth endpoints)
-    if (status === 401) {
-      const url = cfg.url || '';
-      const isAuthEndpoint = /\/api\/auth\/(login|register|otp|password)\b/.test(url);
-      if (!isAuthEndpoint && typeof authHandlers.onUnauthorized === 'function') {
-        try { await authHandlers.onUnauthorized(); } catch { /* no-op */ }
-      }
+    // Log actual backend error in console for easier debugging
+    if (import.meta.env?.DEV && status >= 400) {
+        console.error('[API Error]', error.response?.data || error.message);
     }
 
     return Promise.reject(normalizeApiError(error));
   }
 );
 
-// Thin wrapper returning data by default (or full response if requested)
+// 7. Exported API Wrapper
 const api = {
   async get(url, { params, headers, signal, fullResponse = false } = {}) {
     const res = await http.get(url, { params, headers, signal });
     return fullResponse ? res : res.data;
   },
+
   async post(url, body, { params, headers, signal, fullResponse = false } = {}) {
     const res = await http.post(url, body, { params, headers, signal });
     return fullResponse ? res : res.data;
   },
+
   async put(url, body, { params, headers, signal, fullResponse = false } = {}) {
     const res = await http.put(url, body, { params, headers, signal });
     return fullResponse ? res : res.data;
   },
+
   async patch(url, body, { params, headers, signal, fullResponse = false } = {}) {
     const res = await http.patch(url, body, { params, headers, signal });
     return fullResponse ? res : res.data;
   },
+
   async delete(url, { params, headers, signal, fullResponse = false } = {}) {
     const res = await http.delete(url, { params, headers, signal });
     return fullResponse ? res : res.data;
   },
-  async upload(url, formData, { params, headers, signal, fullResponse = false } = {}) {
+
+  async upload(url, formData, { params, headers, signal, onUploadProgress, fullResponse = false } = {}) {
     const res = await http.post(url, formData, {
       params,
       headers: { ...(headers || {}), 'Content-Type': 'multipart/form-data' },
-      signal
+      signal,
+      onUploadProgress
     });
     return fullResponse ? res : res.data;
   }

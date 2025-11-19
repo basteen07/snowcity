@@ -59,8 +59,7 @@ const endpoints = {
   health: {
     health: () => '/health',
     apiMeta: () => '/api',
-    paymentsHealth: () => '/api/payments/health',
-    payphiHashPreview: () => '/api/payments/payphi/hash-preview' // POST
+    paymentsHealth: () => '/api/payments/health'
   },
 
   // Auth (User)
@@ -74,16 +73,15 @@ const endpoints = {
     passwordReset: () => '/api/auth/password/reset'    // POST
   },
 
-
-
-  // Current User
   // Current User
   users: {
     me: () => '/api/users/me',            // GET/PATCH (Auth)
     updateMe: () => '/api/users/me',      // PATCH (Auth)
-    // Mapped to the new bookings endpoints
-    myBookings: () => '/api/bookings', // GET (Auth)
-    myBookingById: (id) => `/api/bookings/${encodeSeg(id)}`, // GET (Auth)
+    
+    // My Bookings / Orders
+    myBookings: () => '/api/bookings', // GET (Auth) - Lists Orders
+    myBookingById: (id) => `/api/bookings/${encodeSeg(id)}`, // GET (Auth) - Single Order Details
+    
     notifications: () => '/api/users/me/notifications' // GET (Auth)
   },
 
@@ -134,25 +132,27 @@ const endpoints = {
     list: () => '/api/gallery',
     byId: (id) => `/api/gallery/${encodeSeg(id)}`
   },
-bookings: {
+
+  // Bookings & Orders (Unified)
+  bookings: {
     list: () => '/api/bookings',                 // GET
-    create: () => '/api/bookings',               // POST
-    byId: (id) => `/api/bookings/${encodeSeg(id)}`, // GET
-    // Uncomment if backend adds a cancel route:
-    // cancel: (id) => `/api/bookings/${encodeSeg(id)}/cancel`, // POST/DELETE
+    create: () => '/api/bookings',               // POST (Accepts array)
+    byId: (id) => `/api/bookings/${encodeSeg(id)}`, // GET (Order Receipt)
+    cancel: (id) => `/api/bookings/${encodeSeg(id)}/cancel`, // POST
+    
+    // Payments specific to an Order
     payphi: {
-      initiate: (bookingId) =>
-        `/api/bookings/${encodeSeg(bookingId)}/pay/payphi/initiate`, // POST
-      status: (bookingId) =>
-        `/api/bookings/${encodeSeg(bookingId)}/pay/payphi/status`    // GET
+      initiate: (orderId) =>
+        `/api/bookings/${encodeSeg(orderId)}/pay/payphi/initiate`, // POST
+      status: (orderId) =>
+        `/api/bookings/${encodeSeg(orderId)}/pay/payphi/status`    // GET
     }
-  }, 
-   payments: {
+  },
+  
+  // Legacy/Global Payments (if needed, otherwise use bookings.payphi)
+  payments: {
     payphi: {
-      initiate: (bookingId) =>
-        `/api/bookings/${encodeSeg(bookingId)}/pay/payphi/initiate`,
-      status: (bookingId) =>
-        `/api/bookings/${encodeSeg(bookingId)}/pay/payphi/status`
+      hashPreview: () => '/api/payments/payphi/hash-preview' // POST (Debug/Admin)
     }
   }
 };

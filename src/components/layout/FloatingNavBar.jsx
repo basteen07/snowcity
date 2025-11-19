@@ -231,12 +231,21 @@ export default function FloatingNavBar() {
             Contact Us
           </Link>
 
-          <button
-            className="inline-flex items-center rounded-full bg-blue-600 px-4 py-2 text-white text-sm hover:bg-blue-700"
-            onClick={() => navigate("/booking")}
-          >
-            🎟️ Book Tickets
-          </button>
+          {!token ? (
+            <button
+              className="inline-flex items-center rounded-full bg-blue-600 px-4 py-2 text-white text-sm hover:bg-blue-700"
+              onClick={() => navigate("/booking?auth=1")}
+            >
+              🔐 Sign In / Book
+            </button>
+          ) : (
+            <button
+              className="inline-flex items-center rounded-full bg-blue-600 px-4 py-2 text-white text-sm hover:bg-blue-700"
+              onClick={() => navigate("/booking")}
+            >
+              🎟️ Book Tickets
+            </button>
+          )}
 
           {token && (
             <div className="relative">
@@ -423,10 +432,10 @@ export default function FloatingNavBar() {
             className="w-full py-2 bg-blue-600 text-white rounded-full hover:bg-blue-700"
             onClick={() => {
               setMobileOpen(false);
-              navigate("/booking");
+              navigate(token ? "/booking" : "/booking?auth=1");
             }}
           >
-            🎟️ Book Tickets
+            {token ? "🎟️ Book Tickets" : "🔐 Sign In / Book"}
           </button>
         </div>
       )}
