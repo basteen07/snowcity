@@ -311,6 +311,9 @@ export default function FloatingNavBar() {
           <Link to="/contact" className="px-3 py-2 text-sm hover:text-blue-500">
             Contact Us
           </Link>
+          <Link to="/blogs" className="px-3 py-2 text-sm hover:text-blue-500">
+            Blogs
+          </Link>
 
           {!token && (
             <button
@@ -506,6 +509,9 @@ export default function FloatingNavBar() {
 
           <Link to="/contact" className="block py-2 text-gray-800 hover:text-blue-600" onClick={() => setMobileOpen(false)}>
             Contact Us
+          </Link>
+          <Link to="/blogs" className="block py-2 text-gray-800 hover:text-blue-600" onClick={() => setMobileOpen(false)}>
+            Blogs
           </Link>
 
           {!token && (

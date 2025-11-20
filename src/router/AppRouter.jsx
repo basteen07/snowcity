@@ -90,6 +90,7 @@ export default function AppRouter() {
             <Route path="/contact" element={<Contact />} />
             <Route path="/booking" element={<Booking />} />
             <Route path="/gallery" element={<Gallery />} />
+            <Route path="/blogs" element={<VisitorBlogs />} />
             <Route path="/visitor-guide/pages" element={<VisitorPages />} />
             <Route path="/visitor-guide/blogs" element={<VisitorBlogs />} />
             <Route path="/payment/success" element={<PaymentSuccess />} />

@@ -1,11 +1,13 @@
 import React from 'react';
+import dayjs from 'dayjs';
 import { useDispatch, useSelector } from 'react-redux';
-import { listAdminBookings } from '../../features/bookings/adminBookingsSlice';
+import { listAdminBookings, resendTicketAdmin } from '../../features/bookings/adminBookingsSlice';
 import AdminTable from '../../components/common/AdminTable';
 import AdminPagination from '../../components/common/AdminPagination';
 import { useNavigate } from 'react-router-dom';
 import adminApi from '../../services/adminApi';
 import A from '../../services/adminEndpoints';
+
 import { ResponsiveContainer, LineChart, CartesianGrid, XAxis, YAxis, Tooltip, Legend, Line } from 'recharts';
 
 function SummaryCard({ label, value, note }) {
@@ -17,6 +19,16 @@ function SummaryCard({ label, value, note }) {
     </div>
   );
 }
+
+const formatYMD = (value) => dayjs(value).format('YYYY-MM-DD');
+const today = formatYMD(new Date());
+const quickRanges = [
+  { key: 'today', label: 'Today', from: () => dayjs().startOf('day'), to: () => dayjs().endOf('day') },
+  { key: 'yesterday', label: 'Yesterday', from: () => dayjs().subtract(1, 'day').startOf('day'), to: () => dayjs().subtract(1, 'day').endOf('day') },
+  { key: 'week', label: 'Last 7 days', from: () => dayjs().subtract(6, 'day').startOf('day'), to: () => dayjs().endOf('day') },
+  { key: 'month', label: 'Last 30 days', from: () => dayjs().subtract(29, 'day').startOf('day'), to: () => dayjs().endOf('day') },
+  { key: 'all', label: 'All time', from: () => null, to: () => null }
+];
 
 export default function BookingsList() {
   const dispatch = useDispatch();
@@ -32,14 +44,15 @@ export default function BookingsList() {
     user_email: '',
     user_phone: '',
     item_type: '',
-    date_from: '',
-    date_to: ''
+    date_from: today,
+    date_to: today
   });
   const [options, setOptions] = React.useState({ status: 'idle', attractions: [], combos: [], offers: [] });
   const [overview, setOverview] = React.useState({ status: 'idle', trend: [], summary: null });
+  const [activeRange, setActiveRange] = React.useState('today');
 
   React.useEffect(() => {
-    dispatch(listAdminBookings({ page: 1, limit: 20 }));
+    dispatch(listAdminBookings({ page: 1, limit: 20, date_from: today, date_to: today }));
     loadOverview();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -103,6 +116,29 @@ export default function BookingsList() {
     loadOverview();
   };
 
+  const applyQuickRange = React.useCallback((key) => {
+    const range = quickRanges.find((r) => r.key === key);
+    if (!range) return;
+    const from = range.from();
+    const to = range.to();
+    setFilters((prev) => ({
+      ...prev,
+      date_from: from ? from.format('YYYY-MM-DD') : '',
+      date_to: to ? to.format('YYYY-MM-DD') : ''
+    }));
+    setActiveRange(key);
+    const payload = {
+      ...buildQuery({
+        date_from: from ? from.format('YYYY-MM-DD') : undefined,
+        date_to: to ? to.format('YYYY-MM-DD') : undefined
+      }),
+      page: 1,
+      limit: 20
+    };
+    dispatch(listAdminBookings(payload));
+    loadOverview();
+  }, [buildQuery, dispatch, loadOverview]);
+
   React.useEffect(() => {
     if (list.status === 'succeeded') loadOverview();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -112,6 +148,14 @@ export default function BookingsList() {
   const totalPages = meta.totalPages || meta.total_pages || 1;
   const currPage = meta.page || list.query.page || 1;
 
+  const ticketUrl = React.useCallback((path) => {
+    if (!path) return null;
+    if (/^https?:/i.test(path)) return path;
+    const base = import.meta.env?.VITE_API_BASE_URL || '';
+    if (base) return `${base.replace(/\/$/, '')}${path}`;
+    return path;
+  }, []);
+
   const viewUserBookings = (r) => {
     const payload = {
       user_email: r.user_email || '',
@@ -120,6 +164,26 @@ export default function BookingsList() {
     setFilters((prev) => ({ ...prev, ...payload }));
     const query = buildQuery({ ...payload, page: 1 });
     dispatch(listAdminBookings({ ...query, page: 1, limit: 20 }));
+  };
+
+  const handleDownloadTicket = (row) => {
+    if (!row.ticket_pdf) {
+      window.alert('Ticket PDF not available yet.');
+      return;
+    }
+    const url = ticketUrl(row.ticket_pdf);
+    if (url) window.open(url, '_blank', 'noopener');
+  };
+
+  const handleResendTicket = async (row) => {
+    if (!row.booking_id) return;
+    if (!window.confirm('Resend ticket email to this user?')) return;
+    try {
+      await dispatch(resendTicketAdmin({ id: row.booking_id })).unwrap();
+      window.alert('Ticket resend initiated.');
+    } catch (err) {
+      window.alert(err?.message || 'Failed to resend ticket');
+    }
   };
 
   return (
@@ -133,6 +197,19 @@ export default function BookingsList() {
           <SummaryCard label="Revenue" value={`₹${Number(overview.summary.total_revenue || 0).toLocaleString()}`} />
         </div>
       ) : null}
+
+      <div className="flex flex-wrap gap-2 mb-4">
+        {quickRanges.map((range) => (
+          <button
+            key={range.key}
+            onClick={() => applyQuickRange(range.key)}
+            className={`rounded-full px-3 py-1 text-xs font-semibold border ${activeRange === range.key ? 'bg-gray-900 text-white border-gray-900' : 'border-gray-300 text-gray-600 hover:border-gray-500'}`}
+          >
+            {range.label}
+          </button>
+        ))}
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-4 gap-2 mb-3">
         <input className="rounded-md border px-3 py-2" placeholder="Search" value={filters.search} onChange={(e) => setFilters({ ...filters, search: e.target.value })} />
         <select className="rounded-md border px-3 py-2" value={filters.payment_status} onChange={(e) => setFilters({ ...filters, payment_status: e.target.value })}>
@@ -150,7 +227,7 @@ export default function BookingsList() {
           ))}
         </select>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-2 mb-3">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-2 mb-4">
         <select className="rounded-md border px-3 py-2" value={filters.combo_id} onChange={(e) => setFilters({ ...filters, combo_id: e.target.value })}>
           <option value="">Combo: All</option>
           {(options.combos || []).map((c) => (
@@ -172,8 +249,8 @@ export default function BookingsList() {
       </div>
       <div className="grid grid-cols-1 md:grid-cols-4 gap-2 mb-4">
         <input className="rounded-md border px-3 py-2" placeholder="User phone" value={filters.user_phone} onChange={(e) => setFilters({ ...filters, user_phone: e.target.value })} />
-        <input type="date" className="rounded-md border px-3 py-2" value={filters.date_from} onChange={(e) => setFilters({ ...filters, date_from: e.target.value })} />
-        <input type="date" className="rounded-md border px-3 py-2" value={filters.date_to} onChange={(e) => setFilters({ ...filters, date_to: e.target.value })} />
+        <input type="date" className="rounded-md border px-3 py-2" value={filters.date_from} onChange={(e) => { setFilters({ ...filters, date_from: e.target.value }); setActiveRange('custom'); }} />
+        <input type="date" className="rounded-md border px-3 py-2" value={filters.date_to} onChange={(e) => { setFilters({ ...filters, date_to: e.target.value }); setActiveRange('custom'); }} />
         <button className="rounded-md bg-gray-900 text-white px-3 py-2" onClick={onSearch}>Apply Filters</button>
         <button
           className="rounded-md border px-3 py-2"
@@ -198,6 +275,7 @@ export default function BookingsList() {
         keyField="booking_id"
         columns={[
           { key: 'booking_ref', title: 'Ref' },
+          { key: 'booking_date', title: 'Date', render: (r) => r.booking_date ? dayjs(r.booking_date).format('DD MMM, YYYY') : '—' },
           { key: 'user_email', title: 'User', render: (r) => (
             <div className="text-xs">
               <div>{r.user_email || '—'}</div>
@@ -213,18 +291,36 @@ export default function BookingsList() {
           { key: 'combo_title', title: 'Combo/Offer', render: (r) => (
             <div className="flex flex-col text-xs">
               {r.combo_title ? <span>Combo: {r.combo_title}</span> : null}
-              {r.offer_title ? <span>Offer: {r.offer_title}</span> : null}
+              {r.offer_title ? <span>Offer: {r.offer_title}</span> : <span className="text-gray-400">—</span>}
             </div>
           ) },
+          { key: 'slot', title: 'Slot', render: (r) => {
+            if (r.slot_start_time && r.slot_end_time) return `${r.slot_start_time} - ${r.slot_end_time}`;
+            if (r.booking_time) return r.booking_time;
+            return '—';
+          } },
           { key: 'payment_status', title: 'Payment' },
           { key: 'booking_status', title: 'Status' },
           { key: 'final_amount', title: 'Amount', render: (r) => `₹${r?.final_amount ?? r?.total_amount ?? 0}` },
           { key: '__actions', title: '', render: (r) => (
-            <div className="flex justify-end gap-3 text-xs">
+            <div className="flex flex-wrap justify-end gap-3 text-xs">
               <button className="text-blue-600 hover:underline" onClick={(e) => { e.stopPropagation(); navigate(`/admin/bookings/${r.booking_id ?? r.id}`); }}>Details</button>
               {r.user_email || r.user_phone ? (
                 <button className="text-gray-600 hover:underline" onClick={(e) => { e.stopPropagation(); viewUserBookings(r); }}>User bookings</button>
               ) : null}
+              <button
+                className={`hover:underline ${r.ticket_pdf ? 'text-emerald-600' : 'text-gray-400 cursor-not-allowed'}`}
+                onClick={(e) => { e.stopPropagation(); handleDownloadTicket(r); }}
+                disabled={!r.ticket_pdf}
+              >
+                Download ticket
+              </button>
+              <button
+                className="text-orange-600 hover:underline"
+                onClick={(e) => { e.stopPropagation(); handleResendTicket(r); }}
+              >
+                Resend ticket
+              </button>
             </div>
           ) }
         ]}

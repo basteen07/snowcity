@@ -21,7 +21,21 @@ export default function BookingDetails() {
   const b = current.data;
 
   if (current.status === 'loading' && !b) return <div>Loading…</div>;
-  if (current.status === 'failed') return <div className="text-red-600">{current.error?.message || 'Failed to load booking'}</div>;
+  if (current.status === 'failed') {
+    const isForbidden = current.error?.status === 403 || /forbidden/i.test(current.error?.message || '');
+    return (
+      <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+        {isForbidden
+          ? (
+            <>
+              <p className="font-semibold mb-1">You don't have permission to view this booking.</p>
+              <p className="text-amber-700">The attraction is outside your assigned scope. Please contact a super admin if you need access.</p>
+            </>
+          )
+          : (current.error?.message || 'Failed to load booking')}
+      </div>
+    );
+  }
 
   const onSave = async () => {
     await dispatch(updateAdminBooking({ id, patch })).unwrap().catch(() => {});

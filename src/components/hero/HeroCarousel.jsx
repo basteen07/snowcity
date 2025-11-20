@@ -87,10 +87,11 @@ export default function HeroCarousel({ banners = [], waveColor = "#0b1a33" }) {
 
           /* UNIQUE KEY */
           const uniqueKey =
-            b?.id ||
-            b?.banner_id ||
-            b?.uuid ||
-            `${idx}-${desktopImg}-${mobileImg}`;
+            b?.banner_id ??
+            b?.id ??
+            b?.uuid ??
+            b?.slug ??
+            idx;
 
           return (
             <SwiperSlide key={uniqueKey}>

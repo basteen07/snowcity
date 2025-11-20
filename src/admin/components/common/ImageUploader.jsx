@@ -150,11 +150,12 @@ export default function ImageUploader({
 
       {/* Previews */}
       <div className="mt-2 flex items-center gap-3">
-        {preview ? <img src={preview} alt="preview" className="h-16 w-16 object-cover rounded-md border dark:border-neutral-800" /> : null}
+        {preview ? <img src={preview} alt="snowcity" loading="lazy" className="h-16 w-16 object-cover rounded-md border dark:border-neutral-800" /> : null}
         {resolvedValue ? (
           <img
             src={resolvedValue}
-            alt="current"
+            alt="snowcity"
+            loading="lazy"
             className="h-16 w-16 object-cover rounded-md border dark:border-neutral-800"
           />
         ) : null}

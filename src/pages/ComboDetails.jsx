@@ -290,7 +290,7 @@ export default function ComboDetails() {
       <section className="relative h-[42vh] md:h-[56vh] bg-gray-200">
         <img
           src={heroImage || HERO_PLACEHOLDER}
-          alt={title}
+          alt="snowcity"
           className="w-full h-full object-cover"
           loading="lazy"
           draggable="false"
@@ -317,7 +317,7 @@ export default function ComboDetails() {
             <figure className="relative rounded-2xl overflow-hidden shadow">
               <img
                 src={attraction1.image_url}
-                alt={attraction1.title}
+                alt="snowcity"
                 className="w-full h-64 md:h-72 object-cover"
                 loading="lazy"
               />
@@ -329,7 +329,7 @@ export default function ComboDetails() {
             <figure className="relative rounded-2xl overflow-hidden shadow">
               <img
                 src={attraction2.image_url}
-                alt={attraction2.title}
+                alt="snowcity"
                 className="w-full h-64 md:h-72 object-cover"
                 loading="lazy"
               />

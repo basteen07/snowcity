@@ -11,6 +11,7 @@ const A = {
   bookings: () => '/api/admin/bookings',
   bookingById: (id) => `/api/admin/bookings/${encodeSeg(id)}`,
   bookingCancel: (id) => `/api/admin/bookings/${encodeSeg(id)}/cancel`,
+  bookingResendTicket: (id) => `/api/admin/bookings/${encodeSeg(id)}/resend-ticket`,
   payphiStatus: (id) => `/api/admin/bookings/${encodeSeg(id)}/pay/payphi/status`,
   payphiInitiate: (id) => `/api/admin/bookings/${encodeSeg(id)}/pay/payphi/initiate`,
   payphiRefund: (id) => `/api/admin/bookings/${encodeSeg(id)}/pay/payphi/refund`,

@@ -111,6 +111,10 @@ export default function Home() {
   const pageItems = pages.items?.length ? pages.items : cacheRef.current.pages || [];
   const blogItems = blogs.items?.length ? blogs.items : cacheRef.current.blogs || [];
   const galleryItems = gallery.items?.length ? gallery.items : cacheRef.current.gallery || [];
+  const galleryPhotoItems = React.useMemo(
+    () => (galleryItems || []).filter((item) => String(item.media_type || '').toLowerCase() !== 'video'),
+    [galleryItems]
+  );
 
   const marqueeItems = React.useMemo(() => {
     const c = (comboItems || []).map((x) => x.name || x.title || 'Combo');
@@ -171,39 +175,27 @@ export default function Home() {
                 message={gallery.error?.message || 'Failed to load gallery'}
                 onRetry={() => dispatch(fetchGallery({ active: true, limit: 50 }))}
               />
-            ) : galleryItems.length ? (
+            ) : galleryPhotoItems.length ? (
               <div className="overflow-hidden w-full relative h-[160px]">
                 {/* Light, single animation used in both Gallery and Blogs */}
                 <div className="flex gap-4 marquee">
-                  {[...galleryItems.slice(0, 12), ...galleryItems.slice(0, 12)].map((item, i) => {
-                    const isVideo = String(item.media_type || '').toLowerCase() === 'video';
-                    const mediaUrl = isVideo
-                      ? imgSrc(item.media_url || item.url)
-                      : imgSrc(item.image_url || item.url);
-                    const posterUrl = imgSrc(item.thumbnail || item.poster_url || null);
+                  {(() => {
+                    const slice = galleryPhotoItems.slice(0, 12);
+                    return [...slice, ...slice];
+                  })().map((item, i) => {
+                    const mediaUrl = imgSrc(item.image_url || item.url);
 
                     return (
                       <div
-                        key={item.id + '-' + i}
+                        key={`${item.id ?? item.media_id ?? i}-${i}`}
                         className="min-w-[240px] h-[160px] rounded-xl overflow-hidden shadow-md border border-white/10 bg-white/5 backdrop-blur-sm"
                       >
-                        {isVideo ? (
-                          <video
-                            src={mediaUrl}
-                            className="w-full h-full object-cover"
-                            poster={posterUrl}
-                            muted
-                            loop
-                            playsInline
-                          />
-                        ) : (
-                          <img
-                            src={mediaUrl}
-                            className="w-full h-full object-cover"
-                            alt=""
-                            loading={i < 2 ? 'eager' : 'lazy'}
-                          />
-                        )}
+                        <img
+                          src={mediaUrl}
+                          className="w-full h-full object-cover"
+                          alt="snowcity"
+                          loading={i < 2 ? 'eager' : 'lazy'}
+                        />
                       </div>
                     );
                   })}
@@ -234,7 +226,7 @@ export default function Home() {
                 <div className="flex gap-5 marquee-slow">
                   {[...blogItems, ...blogItems].map((b, i) => (
                     <div
-                      key={(b.id || b.slug) + '-' + i}
+                      key={`${b.blog_id ?? b.id ?? b.slug ?? i}-${i}`}
                       className="min-w-[300px] max-w-[300px] rounded-xl bg-white shadow-lg hover:shadow-xl border border-gray-100 overflow-hidden"
                     >
                       <BlogCard item={b} />

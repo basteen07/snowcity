@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import dayjs from 'dayjs';
@@ -71,6 +71,59 @@ const getComboLabel = (combo, fallbackId = null) => {
   const direct = combo.name ?? combo.title ?? combo.combo_name ?? combo.label ?? null;
   if (direct) return direct;
   return fallbackId ? `Combo ${fallbackId}` : 'Combo';
+};
+
+const resolveImageSource = (value) => {
+  if (!value) return null;
+  if (typeof value === 'string') return imgSrc(value);
+  if (typeof value === 'object') {
+    const nested = value.url || value.src || value.image_url || value.path;
+    if (nested) return imgSrc(nested);
+  }
+  return null;
+};
+
+const getAttractionImage = (item) => {
+  if (!item) return null;
+  const candidates = [
+    item.hero_image,
+    item.banner_image,
+    item.image_url,
+    item.cover_image,
+    item.thumbnail,
+    item.media?.[0],
+  ];
+  for (const candidate of candidates) {
+    const src = resolveImageSource(candidate);
+    if (src) return src;
+  }
+  return null;
+};
+
+const getComboPrimaryImage = (combo) => {
+  if (!combo) return null;
+  const candidates = [
+    combo.hero_image,
+    combo.banner_image,
+    combo.image_url,
+    combo.cover_image,
+    combo.media?.[0],
+    combo.attraction_1_image,
+    combo.attraction_2_image,
+  ];
+  for (const candidate of candidates) {
+    const src = resolveImageSource(candidate);
+    if (src) return src;
+  }
+  return null;
+};
+
+const getComboPreviewImages = (combo) => {
+  if (!combo) return [];
+  return [combo.attraction_1_image, combo.attraction_2_image]
+    .map(resolveImageSource)
+    .filter(Boolean)
+    .slice(0, 2);
 };
 
 const normalizePayphiMobile = (s) => {
@@ -265,7 +318,7 @@ export default function Booking() {
       return {
         title: getComboLabel(selectedCombo, getComboId(selectedCombo)),
         price,
-        image: selectedCombo.image_url
+        image: getComboPrimaryImage(selectedCombo) || getComboPreviewImages(selectedCombo)[0] || null,
       };
     }
     if (sel.itemType === 'attraction' && selectedAttraction) {
@@ -275,7 +328,7 @@ export default function Booking() {
       return {
         title: selectedAttraction?.name || selectedAttraction?.title || `Attraction #${getAttrId(selectedAttraction)}`,
         price,
-        image: selectedAttraction.image_url
+        image: getAttractionImage(selectedAttraction),
       };
     }
     return { title: '', price: 0 };
@@ -525,7 +578,21 @@ export default function Booking() {
   const SelectionCarousel = () => {
     const activeTab = sel.itemType;
     const data = activeTab === 'attraction' ? attractions : combos;
-    
+    const scrollRefs = useRef({});
+    const selectedKey = activeTab === 'attraction' ? sel.attractionId : sel.comboId;
+
+    useEffect(() => {
+      if (!selectedKey) return;
+      const cardRef = scrollRefs.current[`${activeTab}_${selectedKey}`];
+      if (cardRef?.scrollIntoView) {
+        cardRef.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+      }
+    }, [activeTab, selectedKey]);
+
+    const currentMetaImage = selectedMeta.image;
+    const currentSummaryDate = sel.date ? dayjs(sel.date).format('DD MMM YYYY') : 'Pick a date';
+    const currentSummarySlot = sel.slotKey ? getSlotLabel(selectedSlot) : 'Choose a slot';
+
     return (
       <div className="mb-8">
         {/* Type Toggle */}
@@ -547,14 +614,39 @@ export default function Booking() {
           </div>
         </div>
 
+        {selectedMeta.title && (
+          <div className="max-w-3xl mx-auto mb-6">
+            <div className="flex items-center gap-4 rounded-2xl border border-blue-100 bg-gradient-to-r from-blue-50 to-purple-50 p-4 shadow-sm">
+              <div className="w-16 h-16 rounded-xl overflow-hidden bg-white border border-blue-100 flex items-center justify-center">
+                {currentMetaImage ? (
+                  <img src={currentMetaImage} alt="snowcity" loading="lazy" className="w-full h-full object-cover" />
+                ) : (
+                  <ShoppingBag size={28} className="text-blue-400" />
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs uppercase text-blue-500 tracking-wider">Currently selecting</p>
+                <h3 className="text-lg font-semibold text-gray-900 truncate">{selectedMeta.title}</h3>
+                <p className="text-sm text-gray-600 truncate">{currentSummaryDate} • {currentSummarySlot}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-xs text-gray-500">Starts at</p>
+                <p className="text-2xl font-bold text-gray-900">₹{selectedMeta.price || 0}</p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Horizontal Scroll Cards */}
-        <div className="flex gap-4 overflow-x-auto snap-x pb-6 px-1 no-scrollbar -mx-2 md:mx-0">
+        <div className="flex gap-4 overflow-x-auto snap-x pb-6 px-1 no-scrollbar -mx-2 md:mx-0 scroll-smooth">
           {data.map(item => {
             const id = activeTab === 'attraction' ? getAttrId(item) : getComboId(item);
             const isSelected = String(activeTab === 'attraction' ? sel.attractionId : sel.comboId) === String(id);
-            const img = item.image_url || item.image; 
+            const img = activeTab === 'attraction' ? getAttractionImage(item) : getComboPrimaryImage(item);
+            const comboPreview = activeTab === 'combo' ? getComboPreviewImages(item) : [];
             const price = item.price || item.base_price || item.combo_price || 0;
             const title = activeTab === 'attraction' ? (item.title || item.name) : getComboLabel(item);
+            const cardKey = `${activeTab}_${id}`;
 
             return (
               <div 
@@ -564,19 +656,35 @@ export default function Booking() {
                   [activeTab === 'attraction' ? 'attractionId' : 'comboId']: String(id),
                   slotKey: '' 
                 }))}
+                ref={(node) => {
+                  if (node) {
+                    scrollRefs.current[cardKey] = node;
+                  } else {
+                    delete scrollRefs.current[cardKey];
+                  }
+                }}
                 className={`snap-center flex-shrink-0 w-64 rounded-2xl cursor-pointer transition-all duration-200 group overflow-hidden bg-white shadow-sm hover:shadow-md border-2 ${
                   isSelected ? 'border-blue-500 ring-2 ring-blue-100' : 'border-transparent hover:border-gray-200'
                 }`}
               >
-                <div className="h-36 bg-gray-100 relative">
+                <div className="h-40 bg-gray-100 relative">
                   {img ? (
-                    <img src={imgSrc(img)} alt={title} className="w-full h-full object-cover" />
+                    <img src={img} alt="snowcity" loading="lazy" className="w-full h-full object-cover" />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center text-gray-300"><ShoppingBag size={32} /></div>
                   )}
                   {isSelected && (
                     <div className="absolute top-3 right-3 bg-blue-600 text-white p-1.5 rounded-full shadow-lg animate-in zoom-in">
                       <Check size={16} strokeWidth={3} />
+                    </div>
+                  )}
+                  {comboPreview.length > 0 && (
+                    <div className="absolute bottom-3 left-3 flex -space-x-2">
+                      {comboPreview.map((src, idx) => (
+                        <span key={idx} className="w-8 h-8 rounded-full border-2 border-white overflow-hidden shadow">
+                          <img src={src} alt="snowcity" loading="lazy" className="w-full h-full object-cover" />
+                        </span>
+                      ))}
                     </div>
                   )}
                   <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-4 pt-12">
@@ -858,7 +966,7 @@ export default function Booking() {
                             return (
                                 <div key={key} className={`flex items-center p-3 border rounded-xl transition-all ${currentQty > 0 ? 'border-blue-500 bg-blue-50/30 shadow-sm' : 'border-gray-100 hover:border-gray-200'}`}>
                                     <div className="w-16 h-16 bg-gray-100 rounded-lg flex-shrink-0 overflow-hidden">
-                                        {getAddonImage(addon) && <img src={getAddonImage(addon)} className="w-full h-full object-cover" />}
+                                        {getAddonImage(addon) && <img src={getAddonImage(addon)} alt="snowcity" loading="lazy" className="w-full h-full object-cover" />}
                                     </div>
                                     <div className="flex-1 px-3">
                                         <div className="font-semibold text-gray-800 text-sm">{getAddonName(addon)}</div>

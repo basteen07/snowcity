@@ -23,7 +23,7 @@ export default function AttractionCard({ item }) {
       <div className="relative aspect-[4/3] w-full overflow-hidden group">
         <img
           src={img}
-          alt={title}
+          alt="snowcity"
           className="
             w-full h-full object-cover
             transition-transform duration-500

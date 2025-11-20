@@ -12,15 +12,33 @@ function getUniqueKey(item) {
   ).toString();
 }
 
+function getSortValue(item) {
+  const candidate =
+    item?.attraction_id ??
+    item?.id ??
+    (typeof item?.slug === "string" ? item.slug : null);
+  const asNumber = Number(candidate);
+  if (!Number.isNaN(asNumber) && isFinite(asNumber)) return asNumber;
+  if (candidate != null) return candidate;
+  return Infinity;
+}
+
 export default function AttractionsCarousel({ items = [] }) {
   const [index, setIndex] = React.useState(0);
 
   const cards = React.useMemo(
     () =>
-      items.map((it) => ({
-        ...it,
-        _key: getUniqueKey(it),
-      })),
+      [...items]
+        .sort((a, b) => {
+          const av = getSortValue(a);
+          const bv = getSortValue(b);
+          if (av === bv) return 0;
+          return av < bv ? -1 : 1;
+        })
+        .map((it) => ({
+          ...it,
+          _key: getUniqueKey(it),
+        })),
     [items]
   );
 

@@ -55,7 +55,7 @@ export default function VisitorBlogs() {
               {cover ? (
                 <img
                   src={cover}
-                  alt={blog.title || 'Blog'}
+                  alt="snowcity"
                   className="w-full h-44 object-cover transition-transform duration-300 group-hover:scale-105"
                   loading="lazy"
                   decoding="async"

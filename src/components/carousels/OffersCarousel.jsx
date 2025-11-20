@@ -44,6 +44,7 @@ export default function OffersCarousel({ offers = [], combos = [] }) {
   if (!items.length) return null;
 
   const current = items[index];
+  const desktopCards = items.slice(0, 6);
 
   return (
     <section className="relative w-full overflow-hidden pt-14 pb-20 bg-[#06111f]">
@@ -90,8 +91,22 @@ export default function OffersCarousel({ offers = [], combos = [] }) {
         </div>
       </div>
 
-      {/* SINGLE SLIDING CARD */}
-      <div className="relative z-10 max-w-md mx-auto px-4 mt-6">
+      {/* DESKTOP GRID */}
+      <div className="hidden md:block relative z-10 max-w-6xl mx-auto px-4 mt-8">
+        <div className="grid md:grid-cols-3 gap-6">
+          {desktopCards.map((card) => (
+            <div
+              key={card.__key}
+              className="rounded-2xl overflow-hidden shadow-2xl bg-white/80 backdrop-blur-xl border border-white/40"
+            >
+              {card.type === "combo" ? <ComboCard item={card.data} /> : <OfferCard item={card.data} />}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* MOBILE SLIDER */}
+      <div className="md:hidden relative z-10 max-w-md mx-auto px-4 mt-6">
         <div
           key={current.__key + "-" + index}
           className="w-full rounded-2xl overflow-hidden shadow-2xl 

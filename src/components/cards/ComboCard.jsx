@@ -98,7 +98,7 @@ export default function ComboCard({ item }) {
           <div className="relative h-full w-full overflow-hidden group animate-left-in">
             <img
               src={left.image_url}
-              alt={left.title}
+              alt="snowcity"
               className="
                 h-full w-full object-cover
                 transition-transform duration-500
@@ -123,7 +123,7 @@ export default function ComboCard({ item }) {
           <div className="relative h-full w-full overflow-hidden group animate-right-in">
             <img
               src={right.image_url}
-              alt={right.title}
+              alt="snowcity"
               className="
                 h-full w-full object-cover
                 transition-transform duration-500

@@ -87,6 +87,25 @@ export default function AttractionDetails() {
   }, [attrId, date, fetchSlots]);
 
   const a = details.data;
+  const galleryImages = React.useMemo(() => {
+    if (!Array.isArray(a?.images)) return [];
+    const sortValue = (entry) => {
+      if (entry && typeof entry === 'object') {
+        const candidate = entry.media_id ?? entry.id ?? entry.image_id ?? null;
+        const numeric = Number(candidate);
+        if (!Number.isNaN(numeric) && isFinite(numeric)) return numeric;
+        if (candidate != null) return candidate;
+      }
+      if (typeof entry === 'string') return entry;
+      return Infinity;
+    };
+    return [...a.images].sort((x, y) => {
+      const xv = sortValue(x);
+      const yv = sortValue(y);
+      if (xv === yv) return 0;
+      return xv < yv ? -1 : 1;
+    });
+  }, [a?.images]);
   const title = a?.name || a?.title || 'Attraction';
   const cover = imgSrc(a, `https://picsum.photos/seed/attr${attrId}/1200/600`);
   const baseUnitPrice = Number(a?.price ?? a?.base_price ?? a?.amount ?? 0);
@@ -129,7 +148,7 @@ export default function AttractionDetails() {
           </div>
         ) : cover ? (
           <>
-            <img src={cover} alt={title} className="w-full h-full object-cover" />
+            <img src={cover} alt="snowcity" loading="lazy" className="w-full h-full object-cover" />
             <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
             <div className="absolute bottom-6 left-0 right-0 px-4">
               <div className="max-w-6xl mx-auto">
@@ -150,15 +169,15 @@ export default function AttractionDetails() {
                 <p className="text-gray-700 text-lg">{a.short_description}</p>
               ) : null}
 
-              {Array.isArray(a?.images) && a.images.length > 1 ? (
+              {galleryImages.length > 1 ? (
                 <div className="mt-6 grid grid-cols-2 md:grid-cols-3 gap-3">
-                  {a.images.slice(1, 7).map((src, i) => (
+                  {galleryImages.slice(1, 7).map((src, i) => (
                     <img
                       key={`img-${i}`}
                       src={imgSrc(src)}
-                      alt={`${title} ${i + 1}`}
-                      className="w-full h-40 md:h-48 object-cover rounded-lg"
+                      alt="snowcity"
                       loading="lazy"
+                      className="w-full h-40 md:h-48 object-cover rounded-lg"
                     />
                   ))}
                 </div>
