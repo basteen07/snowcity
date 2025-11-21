@@ -40,7 +40,7 @@ export default function PaymentSuccess() {
         {cartRef ? 'Your order is confirmed. Tickets are being generated.' : 'Your booking is confirmed.'}
       </p>
 
-      {!cartRef && ticketUrl ? (
+      {ticketUrl ? (
         <div className="mt-5">
           <a
             href={ticketUrl}

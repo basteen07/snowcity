@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import dayjs from 'dayjs';
 import api from '../services/apiClient';
 import endpoints from '../services/endpoints';
 import { imgSrc } from '../utils/media';
+import { getPrice, getBasePrice, getDiscountPercent } from '../utils/pricing';
 import { 
   X, Calendar, Clock, ShoppingBag, Check, ChevronRight, Ticket, 
   User, Mail, Phone, ArrowRight, Plus, Minus, Trash2, Edit2, UserPlus 
@@ -148,6 +149,7 @@ const slotHasCapacity = (slot) => {
 export default function Booking() {
   const dispatch = useDispatch();
   const navigate = useNavigate();
+  const location = useLocation();
   const auth = useSelector((s) => s.auth);
   const hasToken = !!auth?.token;
 
@@ -186,6 +188,7 @@ export default function Booking() {
   const [cartAddons, setCartAddons] = React.useState(new Map());
   const [debugOtp, setDebugOtp] = React.useState('');
   const contentRef = React.useRef(null);
+  const deepLinkAppliedRef = React.useRef(false);
 
   const currentItemAddons = React.useMemo(() => {
     if (!activeItemKey) return new Map();
@@ -196,6 +199,14 @@ export default function Booking() {
   const preselectAttrId = search.get('attraction_id');
   const preselectComboId = search.get('combo_id');
   const forceAuth = search.get('auth');
+  const preselectType = (search.get('type') || '').toLowerCase();
+  const preselectDate = search.get('date');
+  const preselectSlotKey = search.get('slot');
+  const preselectQty = search.get('qty');
+
+  React.useEffect(() => {
+    deepLinkAppliedRef.current = false;
+  }, [location.search]);
 
   const handleCloseBooking = React.useCallback(() => {
     setIsBookingOpen(false);
@@ -225,18 +236,56 @@ export default function Booking() {
   }, [dispatch]);
 
   React.useEffect(() => {
-    if (preselectAttrId || preselectComboId) {
-      setIsBookingOpen(true);
-    }
-    if (preselectAttrId) {
-      const exists = (attractionsState.items || []).some((a) => String(getAttrId(a)) === String(preselectAttrId));
-      if (exists) setSel((s) => ({ ...s, itemType: 'attraction', attractionId: String(preselectAttrId), slotKey: '' }));
-    }
-    if (preselectComboId) {
-      const existsC = (combosState.items || []).some((c) => String(getComboId(c)) === String(preselectComboId));
-      if (existsC) setSel((s) => ({ ...s, itemType: 'combo', comboId: String(preselectComboId), slotKey: '' }));
-    }
-  }, [preselectAttrId, preselectComboId, attractionsState.items, combosState.items]);
+    if (deepLinkAppliedRef.current) return;
+
+    const attrExists = preselectAttrId
+      ? (attractionsState.items || []).some((a) => String(getAttrId(a)) === String(preselectAttrId))
+      : false;
+    const comboExists = preselectComboId
+      ? (combosState.items || []).some((c) => String(getComboId(c)) === String(preselectComboId))
+      : false;
+
+    if (!attrExists && !comboExists) return;
+
+    setIsBookingOpen(true);
+
+    const desiredType = (preselectType === 'combo' && comboExists)
+      ? 'combo'
+      : (preselectType === 'attraction' && attrExists)
+        ? 'attraction'
+        : comboExists
+          ? 'combo'
+          : 'attraction';
+
+    deepLinkAppliedRef.current = true;
+    setSel((prev) => {
+      const next = { ...prev };
+      next.itemType = desiredType;
+      if (desiredType === 'combo') {
+        next.comboId = comboExists ? String(preselectComboId) : '';
+        next.attractionId = '';
+      } else {
+        next.attractionId = attrExists ? String(preselectAttrId) : '';
+        next.comboId = '';
+      }
+      if (preselectDate) next.date = preselectDate;
+      if (preselectSlotKey) next.slotKey = preselectSlotKey;
+      if (preselectQty) {
+        const qtyValue = Math.max(1, Number(preselectQty) || 1);
+        next.qty = qtyValue;
+      }
+      return next;
+    });
+  }, [
+    preselectAttrId,
+    preselectComboId,
+    preselectType,
+    preselectDate,
+    preselectSlotKey,
+    preselectQty,
+    attractionsState.items,
+    combosState.items,
+  ]);
 
   React.useEffect(() => {
     if (forceAuth && !hasToken) {
@@ -281,7 +330,6 @@ export default function Booking() {
     const comboId = sel.comboId;
     const key = itemType === 'combo' ? comboId : attractionId;
     if (key && date) {
-      setSel((s) => ({ ...s, slotKey: '' }));
       fetchSlots({ itemType, attractionId, comboId, date });
     } else {
       setSlots({ status: 'idle', items: [], error: null });
@@ -290,11 +338,11 @@ export default function Booking() {
 
   const attractions = attractionsState.items || [];
   const combos = combosState.items || [];
-  const selectedAttraction = React.useMemo(
+  const selectedItem = React.useMemo(
     () => sel.itemType === 'attraction'
       ? attractions.find((a) => String(getAttrId(a)) === String(sel.attractionId))
-      : null,
-    [attractions, sel.itemType, sel.attractionId]
+      : combos.find((c) => String(getComboId(c)) === String(sel.comboId)),
+    [attractions, combos, sel.itemType, sel.attractionId, sel.comboId]
   );
   const selectedCombo = React.useMemo(
     () => sel.itemType === 'combo'
@@ -311,28 +359,43 @@ export default function Booking() {
   }, [slots.items, sel.slotKey]);
 
   const selectedMeta = React.useMemo(() => {
+    const build = (item, fallbackTitle, fallbackImage) => {
+      if (!item) return { title: fallbackTitle || '', price: 0, basePrice: 0 };
+      const slotPrice = selectedSlot?.price != null ? Number(selectedSlot.price) : null;
+      const finalPrice = slotPrice != null ? slotPrice : getPrice(item);
+      const basePrice = selectedSlot?.base_price ?? (slotPrice != null ? slotPrice : getBasePrice(item));
+      const hasDiscount = basePrice > 0 && finalPrice > 0 && finalPrice < basePrice;
+      const discountPercent = hasDiscount
+        ? Math.round(
+            selectedSlot?.discount_percent ?? getDiscountPercent(item) ?? ((basePrice - finalPrice) / basePrice) * 100
+          )
+        : 0;
+      return {
+        title: fallbackTitle,
+        price: finalPrice,
+        basePrice,
+        hasDiscount,
+        discountPercent,
+        image: fallbackImage,
+      };
+    };
+
     if (sel.itemType === 'combo' && selectedCombo) {
-      const price = selectedSlot?.price != null
-        ? Number(selectedSlot.price)
-        : Number(selectedCombo?.combo_price || selectedCombo?.price || 0);
-      return {
-        title: getComboLabel(selectedCombo, getComboId(selectedCombo)),
-        price,
-        image: getComboPrimaryImage(selectedCombo) || getComboPreviewImages(selectedCombo)[0] || null,
-      };
+      return build(
+        selectedCombo,
+        getComboLabel(selectedCombo, getComboId(selectedCombo)),
+        getComboPrimaryImage(selectedCombo) || getComboPreviewImages(selectedCombo)[0] || null
+      );
     }
-    if (sel.itemType === 'attraction' && selectedAttraction) {
-      const price = selectedSlot?.price != null
-        ? Number(selectedSlot.price)
-        : Number(selectedAttraction?.price || selectedAttraction?.base_price || selectedAttraction?.amount || 0);
-      return {
-        title: selectedAttraction?.name || selectedAttraction?.title || `Attraction #${getAttrId(selectedAttraction)}`,
-        price,
-        image: getAttractionImage(selectedAttraction),
-      };
+    if (sel.itemType === 'attraction' && selectedItem) {
+      return build(
+        selectedItem,
+        selectedItem?.name || selectedItem?.title || `Attraction #${getAttrId(selectedItem)}`,
+        getAttractionImage(selectedItem)
+      );
     }
-    return { title: '', price: 0 };
-  }, [sel.itemType, selectedCombo, selectedAttraction, selectedSlot]);
+    return { title: '', price: 0, basePrice: 0, hasDiscount: false, discountPercent: 0 };
+  }, [sel.itemType, selectedCombo, selectedItem, selectedSlot]);
 
   const qty = Math.max(1, Number(sel.qty) || 1);
   const ticketsSubtotal = Number(selectedMeta.price || 0) * qty;
@@ -382,10 +445,10 @@ export default function Booking() {
       dateLabel: toYMD(sel.date),
       slot_id: item_type === 'Attraction' ? slotId : null,
       combo_slot_id: item_type === 'Combo' ? slotId : null,
-      attraction_id: item_type === 'Attraction' ? getAttrId(selectedAttraction) : null,
+      attraction_id: item_type === 'Attraction' ? getAttrId(selectedItem) : null,
       combo_id: item_type === 'Combo' ? getComboId(selectedCombo) : null,
       slot: selectedSlot || null,
-      attraction: selectedAttraction || null,
+      attraction: selectedItem || null,
       combo: selectedCombo || null,
     };
 
@@ -402,7 +465,7 @@ export default function Booking() {
         return next;
     });
     return true;
-  }, [selectionReady, sel, selectedMeta, selectedSlot, selectedAttraction, selectedCombo, qty, editingKey, dispatch]);
+  }, [selectionReady, sel, selectedMeta, selectedSlot, selectedItem, selectedCombo, qty, editingKey, dispatch]);
 
   const handleNext = () => {
     if (step === 1) {
@@ -631,7 +694,15 @@ export default function Booking() {
               </div>
               <div className="text-right">
                 <p className="text-xs text-gray-500">Starts at</p>
-                <p className="text-2xl font-bold text-gray-900">₹{selectedMeta.price || 0}</p>
+                <div className="flex flex-col items-end">
+                  <p className="text-2xl font-bold text-gray-900">₹{Math.round(selectedMeta.price || 0)}</p>
+                  {selectedMeta.hasDiscount ? (
+                    <div className="text-xs text-green-700 font-semibold flex items-center gap-2">
+                      <span className="line-through text-gray-400">₹{Math.round(selectedMeta.basePrice || 0)}</span>
+                      <span>Save {selectedMeta.discountPercent}%</span>
+                    </div>
+                  ) : null}
+                </div>
               </div>
             </div>
           </div>
@@ -644,7 +715,10 @@ export default function Booking() {
             const isSelected = String(activeTab === 'attraction' ? sel.attractionId : sel.comboId) === String(id);
             const img = activeTab === 'attraction' ? getAttractionImage(item) : getComboPrimaryImage(item);
             const comboPreview = activeTab === 'combo' ? getComboPreviewImages(item) : [];
-            const price = item.price || item.base_price || item.combo_price || 0;
+            const finalPrice = getPrice(item);
+            const basePrice = getBasePrice(item);
+            const hasDiscount = basePrice > 0 && finalPrice > 0 && finalPrice < basePrice;
+            const discountPercent = hasDiscount ? Math.round(getDiscountPercent(item)) : 0;
             const title = activeTab === 'attraction' ? (item.title || item.name) : getComboLabel(item);
             const cardKey = `${activeTab}_${id}`;
 
@@ -673,6 +747,11 @@ export default function Booking() {
                   ) : (
                     <div className="w-full h-full flex items-center justify-center text-gray-300"><ShoppingBag size={32} /></div>
                   )}
+                  {hasDiscount ? (
+                    <div className="absolute top-3 left-3 bg-green-600 text-white text-xs font-semibold px-2 py-1 rounded-full shadow">
+                      Save {discountPercent}%
+                    </div>
+                  ) : null}
                   {isSelected && (
                     <div className="absolute top-3 right-3 bg-blue-600 text-white p-1.5 rounded-full shadow-lg animate-in zoom-in">
                       <Check size={16} strokeWidth={3} />
@@ -687,8 +766,11 @@ export default function Booking() {
                       ))}
                     </div>
                   )}
-                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-4 pt-12">
-                    <p className="text-white font-bold text-lg">₹{price}</p>
+                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-4 pt-12">
+                    <p className="text-white font-bold text-lg">₹{Math.round(finalPrice || basePrice || 0)}</p>
+                    {hasDiscount ? (
+                      <p className="text-xs text-white/80 line-through">₹{Math.round(basePrice)}</p>
+                    ) : null}
                   </div>
                 </div>
                 <div className="p-4">

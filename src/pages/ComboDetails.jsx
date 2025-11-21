@@ -8,7 +8,7 @@ import endpoints from '../services/endpoints';
 import { fetchCombos } from '../features/combos/combosSlice';
 import { addCartItem, setStep } from '../features/bookings/bookingsSlice';
 import { formatCurrency } from '../utils/formatters';
-import { getPrice } from '../utils/pricing';
+import { getPrice, getBasePrice, getDiscountPercent } from '../utils/pricing';
 import { imgSrc } from '../utils/media';
 import dayjs from 'dayjs';
 
@@ -254,14 +254,26 @@ export default function ComboDetails() {
 
   const heroImage = getHeroImage(combo, attraction1.image_url, attraction2.image_url);
   const comboPrice = getPrice(combo);
-  const baseSum =
-    Number(combo?.attraction_1_price || 0) + Number(combo?.attraction_2_price || 0);
+  const comboBasePrice = getBasePrice(combo);
+  const baseSum = comboBasePrice || (
+    Number(combo?.attraction_1_price || 0) + Number(combo?.attraction_2_price || 0)
+  );
   const hasBasePricing = baseSum > 0;
   const savings = hasBasePricing && comboPrice > 0 ? baseSum - comboPrice : 0;
-  const discountPercent =
-    hasBasePricing && comboPrice > 0
-      ? Math.max(0, Math.round((1 - comboPrice / baseSum) * 100))
-      : Number(combo?.discount_percent || 0);
+  const discountPercent = hasBasePricing && comboPrice > 0 && comboPrice < baseSum
+    ? Math.max(0, Math.round(getDiscountPercent(combo) || ((baseSum - comboPrice) / baseSum) * 100))
+    : Number(combo?.discount_percent || 0);
+
+  const buildSlotKey = (slot) => {
+    if (!slot) return '';
+    return String(
+      slot.combo_slot_id ??
+        slot.id ??
+        slot._id ??
+        slot.slot_id ??
+        `${slot.start_time || ''}-${slot.end_time || ''}`
+    );
+  };
 
   const onBook = (slot) => {
     const q = Math.max(1, Number(qty) || 1);
@@ -281,7 +293,14 @@ export default function ComboDetails() {
       })
     );
     dispatch(setStep(1));
-    navigate('/booking');
+    const params = new URLSearchParams({
+      type: 'combo',
+      combo_id: String(comboId),
+      date,
+      slot: buildSlotKey(slot),
+      qty: String(q)
+    });
+    navigate(`/booking?${params.toString()}`);
   };
 
   return (
@@ -391,6 +410,11 @@ export default function ComboDetails() {
                     {slots.map((slot) => {
                       const timeText = labelTime(slot);
                       const price = slot.price == null ? null : Number(slot.price);
+                      const slotBase = slot.base_price != null ? Number(slot.base_price) : null;
+                      const slotHasDiscount = slotBase != null && price != null && price < slotBase;
+                      const slotDiscountPercent = slotHasDiscount
+                        ? Math.max(0, Math.round(slot.discount_percent ?? ((slotBase - price) / slotBase) * 100))
+                        : null;
                       return (
                         <div
                           key={
@@ -407,10 +431,18 @@ export default function ComboDetails() {
                           </div>
                           <div className="flex items-center gap-3">
                             {price != null ? (
-                              <div className="text-sm font-medium">₹ {price.toLocaleString()}</div>
+                              <div className="text-right">
+                                <div className="text-sm font-semibold">₹ {price.toLocaleString()}</div>
+                                {slotHasDiscount ? (
+                                  <div className="text-xs text-gray-500 line-through">₹ {slotBase.toLocaleString()}</div>
+                                ) : null}
+                              </div>
                             ) : (
                               <div className="text-xs text-gray-500">Price at checkout</div>
                             )}
+                            {slotHasDiscount ? (
+                              <span className="text-xs font-semibold text-emerald-600">Save {slotDiscountPercent}%</span>
+                            ) : null}
                             <button
                               disabled={!slot.available}
                               onClick={() => onBook(slot)}

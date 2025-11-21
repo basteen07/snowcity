@@ -133,6 +133,10 @@ const endpoints = {
     byId: (id) => `/api/gallery/${encodeSeg(id)}`
   },
 
+  social: {
+    instagram: () => '/api/social/instagram'
+  },
+
   // Bookings & Orders (Unified)
   bookings: {
     list: () => '/api/bookings',                 // GET

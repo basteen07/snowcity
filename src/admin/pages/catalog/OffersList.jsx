@@ -85,8 +85,22 @@ export default function OffersList() {
         keyField="offer_id"
         columns={[
           { key: 'title', title: 'Title' },
-          { key: 'discount_percent', title: 'Discount %' },
+          {
+            key: 'discount_summary',
+            title: 'Discount',
+            render: (row) => {
+              const type = (row.discount_type || 'percent').toLowerCase();
+              const value = Number(row.discount_value ?? row.discount_percent ?? 0);
+              if (!value) return '—';
+              return type === 'amount' ? `₹${value}` : `${value}%`;
+            }
+          },
           { key: 'rule_type', title: 'Rule' },
+          {
+            key: 'rule_count',
+            title: 'Rules',
+            render: (row) => Number(row.rule_count ?? 0)
+          },
           { key: 'valid_from', title: 'From' },
           { key: 'valid_to', title: 'To' },
           {

@@ -165,18 +165,20 @@ export default function Footer() {
 
       {/* EXTRA STYLES */}
       <style>{`
-        @keyframes waveMove {
+       @keyframes liquidWave {
           0% { transform: translateX(0); }
-          100% { transform: translateX(-8%); }
+          100% { transform: translateX(-50%); }
         }
-        .animate-waveSlow { animation: waveMove 12s linear infinite; }
+        .animate-liquidWave {
+          animation: liquidWave 12s l inear infinite;
+        }
 
         @keyframes floatSnow {
           0%,100% { transform: translateY(0); }
           50% { transform: translateY(-6px); }
         }
         .animate-floatSnowman {
-          animation: floatSnow 4s ease-in-out infinite;
+          animation: floatSnow 4s linear infinite;
         }
       `}</style>
 

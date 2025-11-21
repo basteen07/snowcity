@@ -9,6 +9,7 @@ import ErrorState from '../components/common/ErrorState';
 import { addCartItem, setStep } from '../features/bookings/bookingsSlice';
 import { getAttrId } from '../utils/ids';
 import { imgSrc } from '../utils/media';
+import { getPrice, getBasePrice, getDiscountPercent } from '../utils/pricing';
 
 const toYMD = (d) => dayjs(d).format('YYYY-MM-DD');
 const todayYMD = () => dayjs().format('YYYY-MM-DD');
@@ -108,7 +109,6 @@ export default function AttractionDetails() {
   }, [a?.images]);
   const title = a?.name || a?.title || 'Attraction';
   const cover = imgSrc(a, `https://picsum.photos/seed/attr${attrId}/1200/600`);
-  const baseUnitPrice = Number(a?.price ?? a?.base_price ?? a?.amount ?? 0);
 
   const selectedSlot = React.useMemo(() => {
     for (let i = 0; i < slots.items.length; i++) {
@@ -117,6 +117,15 @@ export default function AttractionDetails() {
     }
     return null;
   }, [slots.items, slotKey]);
+
+  const slotFinalPrice = selectedSlot?.price != null ? Number(selectedSlot.price) : null;
+  const slotBasePrice = selectedSlot?.base_price != null ? Number(selectedSlot.base_price) : null;
+  const finalPrice = slotFinalPrice != null ? slotFinalPrice : getPrice(a);
+  const baseUnitPrice = slotBasePrice != null ? slotBasePrice : getBasePrice(a);
+  const hasDiscount = baseUnitPrice > 0 && finalPrice > 0 && finalPrice < baseUnitPrice;
+  const discountPercent = hasDiscount
+    ? Math.round(selectedSlot?.discount_percent ?? getDiscountPercent(a) ?? ((baseUnitPrice - finalPrice) / baseUnitPrice) * 100)
+    : 0;
 
   const onBookNow = () => {
     if (!a || !date || !selectedSlot || !qty) return;
@@ -136,7 +145,14 @@ export default function AttractionDetails() {
       })
     );
     dispatch(setStep(1));
-    navigate('/booking');
+    const params = new URLSearchParams({
+      type: 'attraction',
+      attraction_id: String(aId),
+      date: toYMD(date),
+      slot: slotKey,
+      qty: String(Math.max(1, Number(qty) || 1))
+    });
+    navigate(`/booking?${params.toString()}`);
   };
 
   return (
@@ -196,8 +212,18 @@ export default function AttractionDetails() {
         <aside className="md:col-span-1">
           <div className="rounded-2xl border shadow-sm bg-white p-4 sticky top-24">
             <div className="flex items-baseline justify-between">
-              <div className="text-2xl font-semibold">₹{Number(selectedSlot?.price ?? baseUnitPrice)}</div>
-              <div className="text-xs text-gray-500">per ticket</div>
+              <div className="flex flex-col">
+                <span className="text-2xl font-semibold text-gray-900">₹{Math.round(finalPrice || 0)}</span>
+                {hasDiscount ? (
+                  <span className="text-sm text-gray-500 line-through">₹{Math.round(baseUnitPrice)}</span>
+                ) : null}
+              </div>
+              <div className="text-right">
+                <div className="text-xs text-gray-500">per ticket</div>
+                {hasDiscount ? (
+                  <div className="text-xs font-semibold text-green-600">Save {discountPercent}%</div>
+                ) : null}
+              </div>
             </div>
 
             <div className="mt-4 space-y-4">

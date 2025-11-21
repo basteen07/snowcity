@@ -194,14 +194,14 @@ export default function FloatingNavBar() {
   return (
     <nav
       ref={navRef}
-      className="fixed left-2 right-2 top-2 z-[100] isolate transition-all duration-300"
+      className="fixed top-4 left-1/2 -translate-x-1/2 w-[94%] max-w-[1400px] z-[120] transition-all duration-300"
     >
       {/* ------------------- DESKTOP NAV -------------------- */}
       <div
-        className={`hidden md:flex items-center justify-between px-6 h-14 transition-all duration-300 ${
+        className={`hidden md:flex items-center justify-between gap-6 px-8 py-4 border rounded-[30px] shadow-2xl transition-all duration-300 ${
           transparent
-            ? "bg-transparent backdrop-blur-none border border-transparent shadow-none rounded-full text-white"
-            : "bg-white border border-gray-200 shadow-lg rounded-2xl text-gray-900"
+            ? "bg-transparent border-transparent text-white shadow-none"
+            : "bg-white text-gray-900 border-gray-200 backdrop-blur-xl"
         }`}
       >
         {/* Logo */}
@@ -209,20 +209,20 @@ export default function FloatingNavBar() {
           <img
             src={Logo}
             alt="SnowCity Logo"
-            className={`h-8 w-auto object-contain ${transparent ? "brightness-200" : "brightness-100"}`}
+            className={`h-8 w-auto object-contain ${transparent ? "brightness-200" : "brightness-125"}`}
           />
         </Link>
 
         {/* MENU ITEMS */}
-        <div className="flex items-center gap-2">
-          <Link to="/" className="px-3 py-2 text-sm hover:text-blue-500">
+        <div className="flex items-center gap-3 text-sm font-medium">
+          <Link to="/" className="px-3 py-2 rounded-full hover:bg-white/20">
             Home
           </Link>
 
           {/* Attractions */}
           <div className="relative">
             <button
-              className="px-3 py-2 text-sm hover:text-blue-500"
+              className="px-3 py-2 rounded-full hover:bg-white/20"
               onClick={() => toggleMenu("attr")}
             >
               Attractions ▾
@@ -259,7 +259,7 @@ export default function FloatingNavBar() {
           {/* Offers */}
           <div className="relative">
             <button
-              className="px-3 py-2 text-sm hover:text-blue-500"
+              className="px-3 py-2 rounded-full hover:bg-white/20"
               onClick={() => toggleMenu("offers")}
             >
               Offers ▾
@@ -287,7 +287,7 @@ export default function FloatingNavBar() {
           {/* Visitor Guide */}
           <div className="relative">
             <button
-              className="px-3 py-2 text-sm hover:text-blue-500"
+              className="px-3 py-2 rounded-full hover:bg-white/20"
               onClick={() => toggleMenu("guide")}
             >
               Visitor Guide ▾
@@ -308,23 +308,25 @@ export default function FloatingNavBar() {
             )}
           </div>
 
-          <Link to="/contact" className="px-3 py-2 text-sm hover:text-blue-500">
+          <Link to="/contact" className="px-3 py-2 rounded-full hover:bg-white/20">
             Contact Us
           </Link>
-          <Link to="/blogs" className="px-3 py-2 text-sm hover:text-blue-500">
+          <Link to="/blogs" className="px-3 py-2 rounded-full hover:bg-white/20">
             Blogs
           </Link>
 
           {!token && (
             <button
-              className="inline-flex items-center rounded-full border border-blue-600 px-4 py-2 text-blue-600 text-sm hover:bg-blue-50"
+              className="inline-flex items-center rounded-full border border-blue-600 px-4 py-2 text-blue-600 hover:bg-blue-50"
               onClick={openAuthModal}
             >
               🔐 Sign In
             </button>
           )}
           <button
-            className={`inline-flex items-center rounded-full ${token ? "bg-blue-600" : "bg-gray-900"} px-4 py-2 text-white text-sm hover:opacity-90`}
+            className={`inline-flex items-center rounded-full px-5 py-2.5 text-sm font-semibold shadow-lg transition ${
+              token ? "bg-blue-600 hover:bg-blue-500" : "bg-gray-900 hover:bg-black"
+            }`}
             onClick={() => navigate("/booking")}
           >
             🎟️ Book Tickets
@@ -369,15 +371,15 @@ export default function FloatingNavBar() {
 
       {/* ------------------- MOBILE NAV BAR -------------------- */}
       <div
-        className={`md:hidden px-3 h-14 flex items-center justify-between transition-all ${
+        className={`md:hidden px-4 py-3 flex items-center justify-between rounded-[26px] border transition-all ${
           transparent
-            ? "bg-transparent border border-transparent text-white rounded-full shadow-none"
-            : "bg-white border border-gray-200 text-gray-900 rounded-2xl shadow"
+            ? "bg-transparent border-transparent text-white shadow-none"
+            : "bg-white border-gray-200 text-gray-900 shadow-lg"
         }`}
       >
         <button
           className={`p-2 rounded-full transition ${
-            transparent ? "bg-white/20 text-white" : "bg-gray-200 text-gray-800"
+            transparent ? "bg-transparent text-white" : "bg-gray-200 text-gray-800"
           }`}
           onClick={() => setMobileOpen((v) => !v)}
           aria-expanded={mobileOpen}
@@ -390,7 +392,7 @@ export default function FloatingNavBar() {
           <img
             src={Logo}
             alt="SnowCity Logo"
-            className={`h-8 transition ${transparent ? "brightness-200" : "brightness-100"}`}
+            className={`h-8 transition ${transparent ? "brightness-200" : "brightness-125"}`}
           />
         </Link>
 
@@ -538,9 +540,9 @@ export default function FloatingNavBar() {
       )}
 
       {authModalOpen && (
-        <div className="fixed inset-0 z-[130] flex items-center justify-center px-4">
+        <div className="fixed inset-0 z-[130] flex items-center justify-center px-4 py-8 sm:py-12">
           <div className="absolute inset-0 bg-black/50" onClick={closeAuthModal} />
-          <div className="relative bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 z-[140]">
+          <div className="relative bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 z-[140] max-h-[calc(100vh-4rem)] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-gray-900">Sign in to SnowCity</h3>
               <button className="p-2 rounded-full bg-gray-100 text-gray-500" onClick={closeAuthModal}>

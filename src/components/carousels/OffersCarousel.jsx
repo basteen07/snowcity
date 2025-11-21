@@ -47,7 +47,23 @@ export default function OffersCarousel({ offers = [], combos = [] }) {
   const desktopCards = items.slice(0, 6);
 
   return (
-    <section className="relative w-full overflow-hidden pt-14 pb-20 bg-[#06111f]">
+    <section className="relative w-full overflow-hidden py-16 px-4 bg-slate-900">
+
+      {/* floating background icons */}
+      <div className="pointer-events-none absolute inset-0">
+        <span
+          className="absolute top-10 right-12 text-6xl opacity-10 text-yellow-200 animate-comboStar"
+          aria-hidden="true"
+        >
+          ⭐
+        </span>
+        <span
+          className="absolute bottom-12 left-16 text-6xl opacity-10 text-indigo-200 animate-comboSpark"
+          aria-hidden="true"
+        >
+          💫
+        </span>
+      </div>
 
       {/* 🔹 ANIMATED LIQUID WAVE SEPARATOR */}
       <div className="absolute top-0 left-0 right-0 w-full overflow-hidden leading-[0]">
@@ -62,7 +78,7 @@ export default function OffersCarousel({ offers = [], combos = [] }) {
               66 5.64 128.47 24.69 193.77 39.54V0H0v27.35
               c47.72 22.52 103.4 27.88 157.05 29.66 
               54.13 1.79 108.29-3.64 164.34-.57z"
-            fill="#0a1f36"
+            fill="#0b1424"
             fillOpacity="0.9"
           />
         </svg>
@@ -77,17 +93,19 @@ export default function OffersCarousel({ offers = [], combos = [] }) {
 
       {/* TITLE */}
       <div className="relative z-10 max-w-6xl mx-auto px-4 text-center">
-        <h2 className="text-3xl md:text-4xl font-extrabold text-white tracking-wide drop-shadow-xl">
-          Combo Deals & Offers
+        <p className="text-xs font-semibold tracking-[0.4em] text-yellow-200/70">
+          COMBO DEALS & OFFERS
+        </p>
+        <h2 className="text-3xl md:text-4xl font-bold text-yellow-400 mt-3">
+          Save more when you bundle experiences
         </h2>
+        <p className="mt-4 text-white/70 text-sm">
+          Save more when you book multiple attractions together!
+        </p>
 
-        <div className="mt-2 flex justify-center">
-          <span className="h-1 w-20 bg-blue-300 rounded-full shadow-xl"></span>
-        </div>
-
-        <div className="mt-3 flex items-center justify-center gap-5">
-          <Link className="text-sm text-blue-200 hover:text-white" to="/combos">Combos</Link>
-          <Link className="text-sm text-blue-200 hover:text-white" to="/offers">Offers</Link>
+        <div className="mt-5 flex items-center justify-center gap-5">
+          <Link className="text-sm font-semibold text-blue-200 hover:text-white" to="/combos">Combos</Link>
+          <Link className="text-sm font-semibold text-blue-200 hover:text-white" to="/offers">Offers</Link>
         </div>
       </div>
 
@@ -131,6 +149,24 @@ export default function OffersCarousel({ offers = [], combos = [] }) {
           animation: slideUpCard 0.6s ease-out;
         }
 
+        @keyframes comboStar {
+          0% { transform: scale(1) rotate(0deg); }
+          50% { transform: scale(1.2) rotate(180deg); }
+          100% { transform: scale(1) rotate(360deg); }
+        }
+        .animate-comboStar {
+          animation: comboStar 8s linear infinite;
+        }
+
+        @keyframes comboSpark {
+          0% { transform: scale(1) rotate(0deg); }
+          50% { transform: scale(1.15) rotate(-180deg); }
+          100% { transform: scale(1) rotate(-360deg); }
+        }
+        .animate-comboSpark {
+          animation: comboSpark 10s linear infinite;
+        }
+
         /* === LIQUID WAVE === */
         @keyframes liquidWave {
           0% { transform: translateX(0); }
@@ -140,33 +176,7 @@ export default function OffersCarousel({ offers = [], combos = [] }) {
           animation: liquidWave 12s linear infinite;
         }
 
-        /* === POLAR WIND STORM SNOW === */
-        .storm-layer {
-          position: absolute;
-          inset: 0;
-          background-image:
-            radial-gradient(3px 4px at 20% 10%, rgba(255,255,255,0.7), transparent),
-            radial-gradient(2px 3px at 80% 20%, rgba(255,255,255,0.5), transparent),
-            radial-gradient(4px 5px at 50% 40%, rgba(255,255,255,0.9), transparent),
-            radial-gradient(3px 3px at 30% 75%, rgba(255,255,255,0.8), transparent);
-          background-size: 200px 200px;
-          transform: skewX(-18deg);
-          animation: polarStorm 6s linear infinite;
-          opacity: 0.7;
-        }
-
-        .storm-layer.layer2 {
-          animation-duration: 9s;
-          opacity: 0.4;
-          transform: skewX(-18deg) scale(1.2);
-        }
-
-        .storm-layer.layer3 {
-          animation-duration: 13s;
-          opacity: 0.25;
-          transform: skewX(-18deg) scale(1.45);
-        }
-
+       
         
       `}</style>
     </section>

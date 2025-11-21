@@ -59,14 +59,27 @@ export default function AttractionsCarousel({ items = [] }) {
   return (
     <section
       className="
-        relative w-full overflow-hidden py-14 
+        relative w-full overflow-hidden py-16
         bg-gradient-to-b
-        from-[#0b1a33]
-        via-[#0a315e]
-        to-[#dff4ff]
+        from-white via-[#f0f6ff] to-[#dcefff]
       "
     >
-      {/* ⭐ SAME WAVE STYLE FROM OFFERS-CAROUSEL */}
+      {/* floating emojis */}
+      <div className="pointer-events-none absolute inset-0">
+        <span
+          className="absolute top-16 left-8 text-6xl opacity-20 text-blue-400 animate-floatSlow"
+          aria-hidden="true"
+        >
+          ❄️
+        </span>
+        <span
+          className="absolute bottom-20 right-10 text-6xl opacity-20 text-indigo-400 animate-floatFast"
+          aria-hidden="true"
+        >
+          🎢
+        </span>
+      </div>
+      {/* wave divider */}
       <div className="absolute top-0 left-0 right-0 w-full overflow-hidden leading-[0] z-0">
         <svg
           className="relative block w-[200%] h-[90px] animate-liquidWave"
@@ -83,7 +96,7 @@ export default function AttractionsCarousel({ items = [] }) {
               c47.72 22.52 103.4 27.88 157.05 29.66
               c54.13 1.79 108.29-3.64 164.34-.57z
             "
-            fill="#0a1f36"
+            fill="#e0ecff"
             fillOpacity="0.9"
           />
         </svg>
@@ -91,19 +104,21 @@ export default function AttractionsCarousel({ items = [] }) {
 
       {/* HEADER */}
       <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-5 md:px-8">
-        <div className="text-center mb-8">
-          <h2 className="text-2xl md:text-3xl font-bold text-white drop-shadow-lg">
+        <div className="text-center mb-10">
+          <p className="text-xs font-semibold tracking-[0.4em] text-slate-400">DISCOVER</p>
+          <h2 className="text-3xl md:text-4xl font-bold text-slate-900 mt-3">
             Attractions
           </h2>
-          <div className="mt-3 flex items-center justify-center">
-            <span className="h-1 w-20 rounded-full bg-blue-300/80 shadow" />
-          </div>
-          <div className="mt-3">
+          <p className="mt-3 text-sm text-slate-500">
+            Discover our amazing collection of thrilling experiences
+          </p>
+          <div className="mt-4">
             <Link
               to="/attractions"
-              className="text-sm text-blue-200 hover:text-white hover:underline"
+              className="inline-flex items-center gap-2 text-sm font-semibold text-blue-600 hover:text-blue-800"
             >
-              View all attractions →
+              View all attractions
+              <span aria-hidden="true">→</span>
             </Link>
           </div>
         </div>
@@ -130,7 +145,7 @@ export default function AttractionsCarousel({ items = [] }) {
 
       {/* MOBILE PAIRED CARDS */}
       <div className="md:hidden relative z-10 max-w-md mx-auto px-4 mt-2">
-        <div className="flex items-center justify-between gap-3 w-full h-[260px] relative overflow-hidden">
+        <div className="flex items-start justify-between gap-3 w-full min-h-[460px] relative overflow-visible">
           {leftCard && (
             <div
               key={leftCard._key + "-L-" + index}
@@ -181,6 +196,24 @@ export default function AttractionsCarousel({ items = [] }) {
         }
         .animate-liquidWave {
           animation: liquidWave 12s linear infinite;
+        }
+
+        @keyframes floatSlow {
+          0% { transform: translateY(0) rotate(0deg); }
+          50% { transform: translateY(-14px) rotate(6deg); }
+          100% { transform: translateY(0) rotate(0deg); }
+        }
+        .animate-floatSlow {
+          animation: floatSlow 7s ease-in-out infinite;
+        }
+
+        @keyframes floatFast {
+          0% { transform: translateY(0) rotate(0deg); }
+          50% { transform: translateY(16px) rotate(-6deg); }
+          100% { transform: translateY(0) rotate(0deg); }
+        }
+        .animate-floatFast {
+          animation: floatFast 5s ease-in-out infinite;
         }
 
         @keyframes cardIn {

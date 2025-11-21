@@ -1,99 +1,108 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { getAttrId } from '../../utils/ids';
 import { imgSrc } from '../../utils/media';
+import { getPrice, getBasePrice, getDiscountPercent } from '../../utils/pricing';
 
 export default function AttractionCard({ item }) {
   const title = item?.name || item?.title || 'Attraction';
+  const desc = item?.short_description || item?.subtitle || '';
   const img = imgSrc(item, 'https://picsum.photos/seed/attr/640/400');
   const attrId = getAttrId(item);
-  const basePrice = Number(item?.base_price ?? item?.price ?? item?.amount ?? 0);
+  const detailHref = attrId ? `/attractions/${attrId}` : '/attractions';
+  const finalPrice = getPrice(item);
+  const basePrice = getBasePrice(item);
+  const displayPrice = finalPrice || basePrice;
+  const hasDiscount = basePrice > 0 && finalPrice > 0 && finalPrice < basePrice;
+  const discountPercent = hasDiscount ? Math.round(getDiscountPercent(item)) : 0;
+
+  const navigate = useNavigate();
+  const stop = (e) => e.stopPropagation();
+
+  const goDetail = React.useCallback(() => {
+    if (detailHref) navigate(detailHref);
+  }, [detailHref, navigate]);
 
   return (
     <div
-      className="
-        bg-white rounded-2xl overflow-hidden border
-        shadow-[0_2px_10px_rgba(0,0,0,0.08)]
-        hover:shadow-[0_8px_25px_rgba(0,0,0,0.15)]
-        transition-all duration-300
-        hover:-translate-y-1
-      "
+      role="button"
+      tabIndex={0}
+      onClick={goDetail}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          goDetail();
+        }
+      }}
+      className="group relative flex flex-col rounded-2xl border border-white/30 bg-white/90 text-slate-900 shadow-[0_18px_45px_rgba(15,23,42,0.18)] backdrop-blur-xl transition-transform duration-300 hover:-translate-y-1 focus:outline-none"
     >
-      {/* IMAGE SECTION */}
-      <div className="relative aspect-[4/3] w-full overflow-hidden group">
+      <div className="relative overflow-hidden rounded-2xl rounded-b-none">
         <img
           src={img}
           alt="snowcity"
-          className="
-            w-full h-full object-cover
-            transition-transform duration-500
-            group-hover:scale-[1.06]
-            group-hover:brightness-[1.08]
-          "
+          className="h-60 w-full object-cover transition duration-500 group-hover:scale-[1.04]"
           loading="lazy"
           decoding="async"
-          sizes="(min-width: 768px) 33vw, 50vw"
         />
+        {displayPrice > 0 ? (
+          <div className="absolute top-4 left-4 flex items-center gap-2 rounded-full bg-black/55 px-4 py-1.5 text-xs font-semibold text-white backdrop-blur">
+            ₹{Math.round(displayPrice)}
+            <span className="text-white/70 hidden sm:inline">/ person</span>
+            {hasDiscount ? (
+              <span className="text-[11px] font-semibold text-emerald-300">-{discountPercent}%</span>
+            ) : null}
+          </div>
+        ) : null}
+        <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+      </div>
 
-        {/* PRICE BADGE */}
-        {basePrice > 0 ? (
-          <div
-            className="
-              absolute top-3 left-3 px-3 py-1.5 text-xs md:text-sm
-              rounded-full bg-black/60 backdrop-blur-md
-              text-white font-semibold shadow
-            "
-          >
-            ₹{Math.round(basePrice)}
-            <span className="opacity-80 font-normal"> / person</span>
+      <div className="flex flex-col gap-4 px-6 pt-6 pb-5">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Experience</p>
+            <h3 className="mt-1 text-xl font-semibold text-slate-900 line-clamp-2">{title}</h3>
+          </div>
+          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+            Indoor Snow
+          </span>
+        </div>
+
+        {desc ? <p className="text-sm text-slate-500 line-clamp-3">{desc}</p> : null}
+
+        {displayPrice > 0 ? (
+          <div className="flex flex-wrap items-baseline gap-3 pt-2">
+            <span className="text-2xl font-semibold text-slate-900">₹{Math.round(displayPrice)}</span>
+            {hasDiscount ? (
+              <>
+                <span className="text-sm line-through text-slate-400">₹{Math.round(basePrice)}</span>
+                <span className="rounded-full border border-emerald-200/70 px-3 py-1 text-xs font-semibold text-emerald-700 bg-emerald-50">
+                  Save {discountPercent}%
+                </span>
+              </>
+            ) : (
+              <span className="text-sm text-slate-500">per person</span>
+            )}
           </div>
         ) : null}
 
-        {/* TOP GRADIENT OVERLAY */}
-        <div className="
-          absolute inset-0 bg-gradient-to-b 
-          from-black/20 via-transparent to-transparent
-        " />
-      </div>
-
-      {/* DETAILS SECTION */}
-      <div className="p-4">
-        <h3
-          className="
-            font-semibold text-gray-900 text-base sm:text-lg 
-            line-clamp-1 tracking-tight
-          "
-        >
-          {title}
-        </h3>
-
-        {/* ACTION BUTTONS */}
-        <div className="mt-4 flex items-center gap-4">
+        <div className="flex flex-wrap items-center gap-3 pt-4 border-t border-slate-100">
           <Link
             to={attrId ? `/booking?attraction_id=${attrId}` : '/booking'}
-            className="
-              inline-flex items-center gap-1
-              rounded-full bg-blue-600 px-4 py-2 text-white text-sm
-              hover:bg-blue-700 active:scale-95 transition-all
-              shadow-sm
-            "
+            onClick={stop}
+            className="inline-flex items-center gap-2 rounded-full border border-slate-900/10 bg-slate-900 text-white px-5 py-2 text-sm font-semibold shadow-lg shadow-slate-900/15 hover:bg-black"
           >
-            <span>🎟</span> Book Now
+            🎟 Book Now
           </Link>
-
           {attrId ? (
             <Link
-              to={`/attractions/${attrId}`}
-              className="
-                text-sm text-blue-600 hover:text-blue-800 font-medium
-                transition
-              "
+              to={detailHref}
+              onClick={stop}
+              className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-900"
             >
-              Quick View →
+              Quick View
+              <span aria-hidden="true">→</span>
             </Link>
-          ) : (
-            <span className="text-sm text-gray-400">Quick View</span>
-          )}
+          ) : null}
         </div>
       </div>
     </div>
