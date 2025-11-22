@@ -1,6 +1,6 @@
 import React from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
-import { useSelector } from 'react-redux';
+import { Link, NavLink, useLocation } from 'react-router-dom';
+import { shallowEqual, useSelector } from 'react-redux';
 import {
   LayoutDashboard,
   CalendarClock,
@@ -67,16 +67,27 @@ function usePersistedSections(defaults) {
   return [openMap, setOne];
 }
 
+const EMPTY_ROLES = Object.freeze([]);
+const EMPTY_PERMS = Object.freeze([]);
+
+const selectSidebarAuth = (state) => {
+  const auth = state.adminAuth || {};
+  const user = auth.user || null;
+  return {
+    roles: Array.isArray(user?.roles) ? user.roles : EMPTY_ROLES,
+    perms: Array.isArray(auth.perms) ? auth.perms : EMPTY_PERMS,
+    userId: user?.user_id ?? user?.id ?? null,
+  };
+};
+
 export default function AdminSidebar({ collapsed, onClose }) {
   const location = useLocation();
 
   // Roles, permissions, and user id from Redux
-  const rolesRaw = useSelector((s) => s.adminAuth?.user?.roles || []);
-  const userIdRaw = useSelector((s) => s.adminAuth?.user?.user_id ?? s.adminAuth?.user?.id ?? null);
-  const permsRaw = useSelector((s) => s.adminAuth?.perms || []);
-  const roles = (rolesRaw || []).map(normalizeRoleName);
-  const perms = new Set((permsRaw || []).map((p) => String(p).toLowerCase().trim()));
-  const isSuperUser = userIdRaw != null && Number(userIdRaw) === 1;
+  const { roles: rolesRaw, perms: permsRaw, userId } = useSelector(selectSidebarAuth, shallowEqual);
+  const roles = React.useMemo(() => (rolesRaw || []).map(normalizeRoleName), [rolesRaw]);
+  const perms = React.useMemo(() => new Set((permsRaw || []).map((p) => String(p).toLowerCase().trim())), [permsRaw]);
+  const isSuperUser = userId != null && Number(userId) === 1;
 
   // Show “Admin Management” if root/superadmin/superuser OR you granted explicit permission keys
   const canSeeAdminMgmt =

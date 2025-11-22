@@ -36,12 +36,53 @@ export default function AttractionDetails() {
   const [slots, setSlots] = React.useState({ status: 'idle', items: [], error: null });
   const [slotKey, setSlotKey] = React.useState('');
   const [qty, setQty] = React.useState(1);
+  const [linkedGallery, setLinkedGallery] = React.useState({ status: 'idle', items: [], error: null });
 
   React.useEffect(() => {
     if (!attrId) {
       setDetails({ status: 'failed', data: null, error: 'Invalid attraction id' });
     }
   }, [attrId]);
+
+  const numericAttrId = React.useMemo(() => {
+    const fromDetails = getAttrId(details.data || {});
+    const parsedDetailsId = Number(fromDetails);
+    if (Number.isFinite(parsedDetailsId)) return parsedDetailsId;
+    const fallback = Number(attrId);
+    return Number.isFinite(fallback) ? fallback : null;
+  }, [details.data, attrId]);
+
+  const loadLinkedGallery = React.useCallback((targetId) => {
+    if (!targetId) return () => {};
+    let canceled = false;
+    setLinkedGallery({ status: 'loading', items: [], error: null });
+    (async () => {
+      try {
+        const res = await api.get(endpoints.gallery.list(), {
+          params: { active: true, target_type: 'attraction', target_ref_id: targetId, limit: 12 }
+        });
+        if (canceled) return;
+        const items = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
+        setLinkedGallery({ status: 'succeeded', items, error: null });
+      } catch (err) {
+        if (canceled) return;
+        setLinkedGallery({ status: 'failed', items: [], error: err?.message || 'Failed to load gallery' });
+      }
+    })();
+    const cancel = () => {
+      canceled = true;
+    };
+    return cancel;
+  }, [attrId]);
+
+  React.useEffect(() => {
+    if (!numericAttrId) {
+      setLinkedGallery({ status: 'idle', items: [], error: null });
+      return () => {};
+    }
+    const cancel = loadLinkedGallery(numericAttrId);
+    return cancel;
+  }, [numericAttrId, loadLinkedGallery]);
 
   React.useEffect(() => {
     if (!attrId) return;
@@ -88,26 +129,8 @@ export default function AttractionDetails() {
   }, [attrId, date, fetchSlots]);
 
   const a = details.data;
-  const galleryImages = React.useMemo(() => {
-    if (!Array.isArray(a?.images)) return [];
-    const sortValue = (entry) => {
-      if (entry && typeof entry === 'object') {
-        const candidate = entry.media_id ?? entry.id ?? entry.image_id ?? null;
-        const numeric = Number(candidate);
-        if (!Number.isNaN(numeric) && isFinite(numeric)) return numeric;
-        if (candidate != null) return candidate;
-      }
-      if (typeof entry === 'string') return entry;
-      return Infinity;
-    };
-    return [...a.images].sort((x, y) => {
-      const xv = sortValue(x);
-      const yv = sortValue(y);
-      if (xv === yv) return 0;
-      return xv < yv ? -1 : 1;
-    });
-  }, [a?.images]);
   const title = a?.name || a?.title || 'Attraction';
+  const hasLinkedGallery = linkedGallery.items.length > 0;
   const cover = imgSrc(a, `https://picsum.photos/seed/attr${attrId}/1200/600`);
 
   const selectedSlot = React.useMemo(() => {
@@ -185,24 +208,49 @@ export default function AttractionDetails() {
                 <p className="text-gray-700 text-lg">{a.short_description}</p>
               ) : null}
 
-              {galleryImages.length > 1 ? (
-                <div className="mt-6 grid grid-cols-2 md:grid-cols-3 gap-3">
-                  {galleryImages.slice(1, 7).map((src, i) => (
-                    <img
-                      key={`img-${i}`}
-                      src={imgSrc(src)}
-                      alt="snowcity"
-                      loading="lazy"
-                      className="w-full h-40 md:h-48 object-cover rounded-lg"
-                    />
-                  ))}
-                </div>
-              ) : null}
-
               {a?.description ? (
                 <div className="mt-8">
                   <h2 className="text-xl font-semibold mb-3">About</h2>
                   <div className="prose max-w-none" dangerouslySetInnerHTML={{ __html: a.description }} />
+                </div>
+              ) : null}
+
+              {linkedGallery.status === 'loading' && !linkedGallery.items.length ? (
+                <div className="mt-8"><Loader /></div>
+              ) : null}
+              {linkedGallery.status === 'failed' ? (
+                <div className="mt-8">
+                  <ErrorState message={linkedGallery.error} onRetry={() => numericAttrId && loadLinkedGallery(numericAttrId)} />
+                </div>
+              ) : null}
+              {linkedGallery.items.length ? (
+                <div className="mt-8">
+                  <div className="flex items-center justify-between mb-3">
+                    <h2 className="text-xl font-semibold">Gallery</h2>
+                    <span className="text-sm text-gray-500">#{linkedGallery.items[0]?.target_name || title}</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                    {linkedGallery.items.map((item) => {
+                      const isVideo = String(item.media_type || '').toLowerCase() === 'video';
+                      const mediaUrl = isVideo ? item.url : imgSrc(item);
+                      if (!mediaUrl) return null;
+                      return (
+                        <figure key={`linked-media-${item.gallery_item_id}`} className="relative rounded-xl overflow-hidden border shadow-sm bg-white">
+                          {isVideo ? (
+                            <video className="w-full h-48 object-cover" src={mediaUrl} controls preload="metadata" poster={imgSrc(item.thumbnail)} />
+                          ) : (
+                            <img src={mediaUrl} alt={item.title || title} className="w-full h-48 object-cover" loading="lazy" />
+                          )}
+                          {(item.title || item.description) ? (
+                            <figcaption className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-3 text-xs text-white">
+                              {item.title ? <div className="font-medium text-sm">{item.title}</div> : null}
+                              {item.description ? <div className="opacity-80 mt-1">{item.description}</div> : null}
+                            </figcaption>
+                          ) : null}
+                        </figure>
+                      );
+                    })}
+                  </div>
                 </div>
               ) : null}
             </>

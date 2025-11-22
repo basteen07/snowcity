@@ -1,14 +1,14 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import dayjs from 'dayjs';
 import api from '../services/apiClient';
 import endpoints from '../services/endpoints';
 import { imgSrc } from '../utils/media';
-import { getPrice, getBasePrice, getDiscountPercent } from '../utils/pricing';
+import { getPrice, getBasePrice } from '../utils/pricing';
 import { 
   X, Calendar, Clock, ShoppingBag, Check, ChevronRight, Ticket, 
-  User, Mail, Phone, ArrowRight, Plus, Minus, Trash2, Edit2, UserPlus 
+  User, Mail, Phone, ArrowRight, Plus, Minus, Trash2, Edit2, UserPlus, Globe, AlertCircle 
 } from 'lucide-react';
 
 import {
@@ -40,6 +40,16 @@ const getSlotLabel = (s) =>
 
 const fmtPhone = (s) => (s || '').replace(/[^\d+]/g, '');
 
+// Validation Constants
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const COUNTRY_CODES = [
+  { code: '+91', label: 'IN (+91)' },
+  { code: '+1', label: 'US (+1)' },
+  { code: '+971', label: 'AE (+971)' },
+  { code: '+44', label: 'UK (+44)' },
+  { code: '+65', label: 'SG (+65)' },
+];
+
 const getAddonPrice = (a) => Number(a?.price ?? a?.amount ?? 0);
 const getAddonId = (addon) => addon?.id ?? addon?.addon_id ?? addon?._id ?? null;
 const getAddonName = (addon) => addon?.name ?? addon?.title ?? addon?.label ?? 'Addon';
@@ -53,7 +63,21 @@ const getAddonImage = (addon) => {
   }
   return null;
 };
-const getAddonDescription = (addon) => addon?.short_description ?? addon?.subtitle ?? addon?.description ?? '';
+
+function useMediaQuery(query) {
+  const getMatch = () => (typeof window !== 'undefined' ? window.matchMedia(query).matches : false);
+  const [matches, setMatches] = useState(getMatch);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mql = window.matchMedia(query);
+    const handler = (event) => setMatches(event.matches);
+    mql.addEventListener('change', handler);
+    return () => mql.removeEventListener('change', handler);
+  }, [query]);
+
+  return matches;
+}
 const clampQty = (qty, min = 0, max = 10) => Math.min(Math.max(qty, min), max);
 
 const createDefaultSelection = () => ({
@@ -74,10 +98,12 @@ const getComboLabel = (combo, fallbackId = null) => {
   return fallbackId ? `Combo ${fallbackId}` : 'Combo';
 };
 
+// Image Helpers for Combo Split View
 const resolveImageSource = (value) => {
   if (!value) return null;
   if (typeof value === 'string') return imgSrc(value);
   if (typeof value === 'object') {
+    // Handle object structure if image is { url: '...' }
     const nested = value.url || value.src || value.image_url || value.path;
     if (nested) return imgSrc(nested);
   }
@@ -86,13 +112,14 @@ const resolveImageSource = (value) => {
 
 const getAttractionImage = (item) => {
   if (!item) return null;
+  // Priority list
   const candidates = [
-    item.hero_image,
-    item.banner_image,
-    item.image_url,
-    item.cover_image,
-    item.thumbnail,
-    item.media?.[0],
+    item.hero_image, 
+    item.banner_image, 
+    item.image_url, 
+    item.cover_image, 
+    item.thumbnail, 
+    item.media?.[0]
   ];
   for (const candidate of candidates) {
     const src = resolveImageSource(candidate);
@@ -105,12 +132,12 @@ const getComboPrimaryImage = (combo) => {
   if (!combo) return null;
   const candidates = [
     combo.hero_image,
-    combo.banner_image,
-    combo.image_url,
+    combo.banner_image, 
+    combo.image_url, 
     combo.cover_image,
     combo.media?.[0],
-    combo.attraction_1_image,
-    combo.attraction_2_image,
+    combo.attraction_1_image, // Fallback to child images
+    combo.attraction_2_image
   ];
   for (const candidate of candidates) {
     const src = resolveImageSource(candidate);
@@ -120,11 +147,23 @@ const getComboPrimaryImage = (combo) => {
 };
 
 const getComboPreviewImages = (combo) => {
+  // Returns array of [img1, img2] for split view
   if (!combo) return [];
-  return [combo.attraction_1_image, combo.attraction_2_image]
-    .map(resolveImageSource)
-    .filter(Boolean)
-    .slice(0, 2);
+  const images = [];
+  
+  // Try explicit child images first (if your API returns them flattened)
+  if (combo.attraction_1_image) images.push(resolveImageSource(combo.attraction_1_image));
+  if (combo.attraction_2_image) images.push(resolveImageSource(combo.attraction_2_image));
+  
+  // If missing, try to parse from media array
+  if (images.length < 2 && Array.isArray(combo.media)) {
+      combo.media.forEach(m => {
+          const src = resolveImageSource(m);
+          if (src && !images.includes(src)) images.push(src);
+      });
+  }
+  
+  return images.slice(0, 2).filter(Boolean);
 };
 
 const normalizePayphiMobile = (s) => {
@@ -145,11 +184,38 @@ const slotHasCapacity = (slot) => {
   return cap > 0;
 };
 
+const getOfferId = (offer) => offer?.id ?? offer?.offer_id ?? offer?.offerId ?? offer?.slug ?? null;
+const getOfferTitle = (offer) => offer?.title || offer?.name || `Offer ${getOfferId(offer) ?? ''}`.trim();
+const getOfferSummary = (offer) => offer?.short_description || offer?.subtitle || offer?.description || '';
+
+const computeOfferDiscount = (offer, totalAmount) => {
+  if (!offer || !totalAmount) return 0;
+  const discountType = String(offer.discount_type || offer.rule_discount_type || '').toLowerCase();
+  const percentFromOffer = Number(
+    offer.discount_percent ??
+      offer.discountPercent ??
+      (discountType === 'percent' ? offer.discount_value ?? offer.discountValue : 0)
+  ) || 0;
+  const flatValue = Number(offer.discount_value ?? offer.discountValue ?? offer.flat_discount ?? 0) || 0;
+
+  let discount = 0;
+  if ((discountType === 'percent' && percentFromOffer > 0) || percentFromOffer > 0) {
+    discount = (totalAmount * percentFromOffer) / 100;
+  } else {
+    discount = flatValue;
+  }
+
+  const maxDiscount = Number(offer.max_discount ?? offer.maxDiscount ?? 0);
+  if (maxDiscount > 0) discount = Math.min(discount, maxDiscount);
+
+  return Math.max(0, Math.min(discount, totalAmount));
+};
+
 /* ================= Component ================= */
 export default function Booking() {
   const dispatch = useDispatch();
   const navigate = useNavigate();
-  const location = useLocation();
+  const isDesktop = useMediaQuery('(min-width: 768px)');
   const auth = useSelector((s) => s.auth);
   const hasToken = !!auth?.token;
 
@@ -173,22 +239,83 @@ export default function Booking() {
   const activeItemKey = checkoutItem?.key || null;
 
   // UI State
-  const [isBookingOpen, setIsBookingOpen] = useState(true);
+  const [isBookingOpen, setIsBookingOpen] = useState(false);
   const [sel, setSel] = React.useState(() => createDefaultSelection());
   const [editingKey, setEditingKey] = React.useState(null);
   const [slots, setSlots] = React.useState({ status: 'idle', items: [], error: null });
   const [otpCode, setOtpCode] = React.useState('');
   const [promoInput, setPromoInput] = React.useState('');
 
+  // Auth Form State (Local)
+  const [countryCode, setCountryCode] = useState('+91');
+  const [phoneLocal, setPhoneLocal] = useState('');
+  const [contactErrors, setContactErrors] = useState({}); // { email: '...', phone: '...' }
+
+  // Calculate combined phone for Redux
+  const combinedPhoneDigits = useMemo(() => {
+      return `${countryCode}${phoneLocal}`.replace(/\D/g, '');
+  }, [countryCode, phoneLocal]);
+
+  // Sync Local Phone state from Redux (Initial Load)
+  useEffect(() => {
+      if (contact?.phone && !phoneLocal) {
+          const digits = String(contact.phone).replace(/\D/g, '');
+          // Simple heuristic: if starts with 91 and length > 10, split it
+          if (digits.length > 10) {
+              // Try to match known codes
+              const known = COUNTRY_CODES.find(c => digits.startsWith(c.code.replace('+', '')));
+              if (known) {
+                  setCountryCode(known.code);
+                  setPhoneLocal(digits.slice(known.code.length - 1)); // approx
+              } else {
+                  // Default fallback
+                  setPhoneLocal(digits.slice(-10));
+              }
+          } else {
+              setPhoneLocal(digits);
+          }
+      }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Run once on mount to populate form
+
   // Offers
   const [offers, setOffers] = React.useState([]);
   const [offersStatus, setOffersStatus] = React.useState('idle');
   const [selectedOfferId, setSelectedOfferId] = React.useState('');
 
+  useEffect(() => {
+    if (offersStatus !== 'idle') return;
+    let cancelled = false;
+    const loadOffers = async () => {
+      setOffersStatus('loading');
+      try {
+        const res = await api.get(endpoints.offers.list(), { params: { active: true, limit: 20 } });
+        if (cancelled) return;
+        const list = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
+        setOffers(list);
+        setOffersStatus('succeeded');
+      } catch (err) {
+        if (!cancelled) setOffersStatus('failed');
+      }
+    };
+    loadOffers();
+    return () => {
+      cancelled = true;
+    };
+  }, [offersStatus]);
+
+  const handleCloseBooking = React.useCallback(() => {
+    setIsBookingOpen(false);
+    navigate('/');
+  }, [navigate]);
+
+  useEffect(() => {
+    if (isDesktop) {
+      setIsBookingOpen(true);
+    }
+  }, [isDesktop]);
+
   const [cartAddons, setCartAddons] = React.useState(new Map());
-  const [debugOtp, setDebugOtp] = React.useState('');
-  const contentRef = React.useRef(null);
-  const deepLinkAppliedRef = React.useRef(false);
 
   const currentItemAddons = React.useMemo(() => {
     if (!activeItemKey) return new Map();
@@ -198,26 +325,8 @@ export default function Booking() {
   const [search] = useSearchParams();
   const preselectAttrId = search.get('attraction_id');
   const preselectComboId = search.get('combo_id');
-  const forceAuth = search.get('auth');
-  const preselectType = (search.get('type') || '').toLowerCase();
-  const preselectDate = search.get('date');
-  const preselectSlotKey = search.get('slot');
-  const preselectQty = search.get('qty');
-
-  React.useEffect(() => {
-    deepLinkAppliedRef.current = false;
-  }, [location.search]);
-
-  const handleCloseBooking = React.useCallback(() => {
-    setIsBookingOpen(false);
-    navigate('/');
-  }, [navigate]);
 
   // --- EFFECTS ---
-
-  React.useEffect(() => {
-    dispatch(setStep(1));
-  }, [dispatch]);
 
   React.useEffect(() => {
     if (attractionsState.status === 'idle') dispatch(fetchAttractions({ active: true, limit: 100 }));
@@ -235,73 +344,22 @@ export default function Booking() {
     dispatch(resetCart());
   }, [dispatch]);
 
+  // Open if params exist
   React.useEffect(() => {
-    if (deepLinkAppliedRef.current) return;
-
-    const attrExists = preselectAttrId
-      ? (attractionsState.items || []).some((a) => String(getAttrId(a)) === String(preselectAttrId))
-      : false;
-    const comboExists = preselectComboId
-      ? (combosState.items || []).some((c) => String(getComboId(c)) === String(preselectComboId))
-      : false;
-
-    if (!attrExists && !comboExists) return;
-
-    setIsBookingOpen(true);
-
-    const desiredType = (preselectType === 'combo' && comboExists)
-      ? 'combo'
-      : (preselectType === 'attraction' && attrExists)
-        ? 'attraction'
-        : comboExists
-          ? 'combo'
-          : 'attraction';
-
-    deepLinkAppliedRef.current = true;
-    setSel((prev) => {
-      const next = { ...prev };
-      next.itemType = desiredType;
-      if (desiredType === 'combo') {
-        next.comboId = comboExists ? String(preselectComboId) : '';
-        next.attractionId = '';
-      } else {
-        next.attractionId = attrExists ? String(preselectAttrId) : '';
-        next.comboId = '';
-      }
-      if (preselectDate) next.date = preselectDate;
-      if (preselectSlotKey) next.slotKey = preselectSlotKey;
-      if (preselectQty) {
-        const qtyValue = Math.max(1, Number(preselectQty) || 1);
-        next.qty = qtyValue;
-      }
-      return next;
-    });
-  }, [
-    preselectAttrId,
-    preselectComboId,
-    preselectType,
-    preselectDate,
-    preselectSlotKey,
-    preselectQty,
-    attractionsState.items,
-    combosState.items,
-  ]);
-
-  React.useEffect(() => {
-    if (forceAuth && !hasToken) {
+    if (preselectAttrId || preselectComboId) {
       setIsBookingOpen(true);
-      dispatch(setStep(2));
     }
-  }, [forceAuth, hasToken, dispatch]);
-
-  React.useEffect(() => {
-    if (contentRef.current) {
-      contentRef.current.scrollTo({ top: 0, behavior: 'smooth' });
-    } else if (typeof window !== 'undefined') {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (preselectAttrId) {
+      const exists = (attractionsState.items || []).some((a) => String(getAttrId(a)) === String(preselectAttrId));
+      if (exists) setSel((s) => ({ ...s, itemType: 'attraction', attractionId: String(preselectAttrId), slotKey: '' }));
     }
-  }, [step]);
+    if (preselectComboId) {
+      const existsC = (combosState.items || []).some((c) => String(getComboId(c)) === String(preselectComboId));
+      if (existsC) setSel((s) => ({ ...s, itemType: 'combo', comboId: String(preselectComboId), slotKey: '' }));
+    }
+  }, [preselectAttrId, preselectComboId, attractionsState.items, combosState.items]);
 
+  // Fetch Slots
   const fetchSlots = React.useCallback(async ({ itemType, attractionId, comboId, date }) => {
     if (!date) return;
     const key = itemType === 'combo' ? comboId : attractionId;
@@ -330,19 +388,22 @@ export default function Booking() {
     const comboId = sel.comboId;
     const key = itemType === 'combo' ? comboId : attractionId;
     if (key && date) {
+      setSel((s) => ({ ...s, slotKey: '' }));
       fetchSlots({ itemType, attractionId, comboId, date });
     } else {
       setSlots({ status: 'idle', items: [], error: null });
     }
   }, [sel.itemType, sel.attractionId, sel.comboId, sel.date, fetchSlots]);
 
+  // --- DERIVED DATA ---
+
   const attractions = attractionsState.items || [];
   const combos = combosState.items || [];
-  const selectedItem = React.useMemo(
+  const selectedAttraction = React.useMemo(
     () => sel.itemType === 'attraction'
       ? attractions.find((a) => String(getAttrId(a)) === String(sel.attractionId))
-      : combos.find((c) => String(getComboId(c)) === String(sel.comboId)),
-    [attractions, combos, sel.itemType, sel.attractionId, sel.comboId]
+      : null,
+    [attractions, sel.itemType, sel.attractionId]
   );
   const selectedCombo = React.useMemo(
     () => sel.itemType === 'combo'
@@ -350,6 +411,10 @@ export default function Booking() {
       : null,
     [combos, sel.itemType, sel.comboId]
   );
+  const selectedOffer = React.useMemo(() => {
+    if (!selectedOfferId) return null;
+    return offers.find((offer) => String(getOfferId(offer)) === String(selectedOfferId)) || null;
+  }, [offers, selectedOfferId]);
   const selectedSlot = React.useMemo(() => {
     for (let i = 0; i < slots.items.length; i++) {
       const s = slots.items[i];
@@ -359,47 +424,33 @@ export default function Booking() {
   }, [slots.items, sel.slotKey]);
 
   const selectedMeta = React.useMemo(() => {
-    const build = (item, fallbackTitle, fallbackImage) => {
-      if (!item) return { title: fallbackTitle || '', price: 0, basePrice: 0 };
-      const slotPrice = selectedSlot?.price != null ? Number(selectedSlot.price) : null;
-      const finalPrice = slotPrice != null ? slotPrice : getPrice(item);
-      const basePrice = selectedSlot?.base_price ?? (slotPrice != null ? slotPrice : getBasePrice(item));
-      const hasDiscount = basePrice > 0 && finalPrice > 0 && finalPrice < basePrice;
-      const discountPercent = hasDiscount
-        ? Math.round(
-            selectedSlot?.discount_percent ?? getDiscountPercent(item) ?? ((basePrice - finalPrice) / basePrice) * 100
-          )
-        : 0;
-      return {
-        title: fallbackTitle,
-        price: finalPrice,
-        basePrice,
-        hasDiscount,
-        discountPercent,
-        image: fallbackImage,
-      };
-    };
-
     if (sel.itemType === 'combo' && selectedCombo) {
-      return build(
-        selectedCombo,
-        getComboLabel(selectedCombo, getComboId(selectedCombo)),
-        getComboPrimaryImage(selectedCombo) || getComboPreviewImages(selectedCombo)[0] || null
-      );
+      const fallbackPrice = getPrice(selectedCombo);
+      const price = selectedSlot?.price != null
+        ? Number(selectedSlot.price)
+        : Number(fallbackPrice || selectedCombo?.combo_price || selectedCombo?.price || 0);
+      return {
+        title: getComboLabel(selectedCombo, getComboId(selectedCombo)),
+        price,
+        image: getComboPrimaryImage(selectedCombo), // Use helper
+        previewImages: getComboPreviewImages(selectedCombo) // Use helper for split view
+      };
     }
-    if (sel.itemType === 'attraction' && selectedItem) {
-      return build(
-        selectedItem,
-        selectedItem?.name || selectedItem?.title || `Attraction #${getAttrId(selectedItem)}`,
-        getAttractionImage(selectedItem)
-      );
+    if (sel.itemType === 'attraction' && selectedAttraction) {
+      const price = selectedSlot?.price != null
+        ? Number(selectedSlot.price)
+        : Number(selectedAttraction?.price || selectedAttraction?.base_price || selectedAttraction?.amount || 0);
+      return {
+        title: selectedAttraction?.name || selectedAttraction?.title || `Attraction #${getAttrId(selectedAttraction)}`,
+        price,
+        image: getAttractionImage(selectedAttraction) // Use helper
+      };
     }
-    return { title: '', price: 0, basePrice: 0, hasDiscount: false, discountPercent: 0 };
-  }, [sel.itemType, selectedCombo, selectedItem, selectedSlot]);
+    return { title: '', price: 0 };
+  }, [sel.itemType, selectedCombo, selectedAttraction, selectedSlot]);
 
   const qty = Math.max(1, Number(sel.qty) || 1);
   const ticketsSubtotal = Number(selectedMeta.price || 0) * qty;
-  
   const selectionReady = Boolean(selectedMeta.title && sel.date && sel.slotKey && qty);
   
   const cartTicketsTotal = React.useMemo(() => {
@@ -420,8 +471,11 @@ export default function Booking() {
   }, [cartAddons, cartItems]);
 
   const grossTotal = cartTicketsTotal + totalAddonsCost;
-  const discount = Number(coupon.discount || 0);
-  const finalTotal = Math.max(0, grossTotal - discount);
+  const offerDiscountAmount = React.useMemo(() => computeOfferDiscount(selectedOffer, grossTotal), [selectedOffer, grossTotal]);
+  const subtotalAfterOffer = Math.max(0, grossTotal - offerDiscountAmount);
+  const couponDiscount = Number(coupon.discount || 0);
+  const couponApplied = couponDiscount > 0 && (coupon.code || coupon.data?.code);
+  const finalTotal = Math.max(0, subtotalAfterOffer - couponDiscount);
 
   // --- ACTIONS ---
 
@@ -445,10 +499,10 @@ export default function Booking() {
       dateLabel: toYMD(sel.date),
       slot_id: item_type === 'Attraction' ? slotId : null,
       combo_slot_id: item_type === 'Combo' ? slotId : null,
-      attraction_id: item_type === 'Attraction' ? getAttrId(selectedItem) : null,
+      attraction_id: item_type === 'Attraction' ? getAttrId(selectedAttraction) : null,
       combo_id: item_type === 'Combo' ? getComboId(selectedCombo) : null,
       slot: selectedSlot || null,
-      attraction: selectedItem || null,
+      attraction: selectedAttraction || null,
       combo: selectedCombo || null,
     };
 
@@ -465,7 +519,7 @@ export default function Booking() {
         return next;
     });
     return true;
-  }, [selectionReady, sel, selectedMeta, selectedSlot, selectedItem, selectedCombo, qty, editingKey, dispatch]);
+  }, [selectionReady, sel, selectedMeta, selectedSlot, selectedAttraction, selectedCombo, qty, editingKey, dispatch]);
 
   const handleNext = () => {
     if (step === 1) {
@@ -482,6 +536,7 @@ export default function Booking() {
         }
       }
     } else if (step === 2) {
+      // We now allow sendOTP to handle navigation logic via success
       if (otp.verified) dispatch(setStep(3));
       else alert("Please verify OTP to continue.");
     } else if (step === 3) {
@@ -524,7 +579,10 @@ export default function Booking() {
       const orderId = created.order_id;
       if (!orderId) throw new Error('Order ID missing');
 
+      // Use the validated contact info stored in Redux or State
+      // Fallback to Auth user info if needed
       const email = (contact.email || auth?.user?.email || '').trim();
+      // Use the constructed phone from state to ensure correct format
       const mobile = normalizePayphiMobile(contact.phone || auth?.user?.phone || '');
       
       const init = await dispatch(initiatePayPhi({ bookingId: orderId, email, mobile })).unwrap();
@@ -566,33 +624,73 @@ export default function Booking() {
     dispatch(setStep(1));
   };
 
+  // --- AUTH HANDLERS ---
+
+  const handlePhoneChange = (e) => {
+    const raw = e.target.value;
+    // Only allow numbers
+    const digits = raw.replace(/\D/g, '').slice(0, 10); 
+    setPhoneLocal(digits);
+    
+    // Clear phone error if length is 10
+    if (digits.length === 10) {
+        setContactErrors(prev => ({ ...prev, phone: undefined }));
+        // Update Redux immediately so state is consistent
+        dispatch(setContact({ phone: `${countryCode}${digits}` }));
+    }
+  };
+
   const sendOTP = async () => {
+    // 1. Validation
+    const errors = {};
     const email = (contact.email || '').trim();
-    const phone = (contact.phone || '').replace(/[^\d+]/g, '');
-    if (!email && !phone) return alert('Enter email or phone');
+    if (!EMAIL_REGEX.test(email)) {
+        errors.email = 'Please enter a valid email address';
+    }
+    if (phoneLocal.length !== 10) {
+        errors.phone = 'Phone number must be exactly 10 digits';
+    }
+
+    if (Object.keys(errors).length > 0) {
+        setContactErrors(errors);
+        return; // Stop
+    }
+
+    // Clear errors
+    setContactErrors({});
+
+    // 2. Format Phone
+    const fullPhone = `${countryCode}${phoneLocal}`;
+    
+    // 3. Dispatch (Store in Redux first)
+    dispatch(setContact({ email, phone: fullPhone }));
+
     try {
-      const res = await dispatch(sendAuthOtp({ email, phone })).unwrap();
-      if (res?.otp) {
-        setDebugOtp(res.otp);
-        setOtpCode(res.otp);
-      }
+        await dispatch(sendAuthOtp({ email, phone: fullPhone })).unwrap();
+        // Success logic handled by UI observing 'otp.sent'
     } catch (e) {
-      setDebugOtp('');
-      alert(e?.message || 'Failed to send OTP');
+        alert(e?.message || 'Failed to send OTP');
     }
   };
 
   const verifyOTP = async () => {
-    if (!otpCode) return alert('Enter the OTP code');
+    if (!otpCode || otpCode.length < 4) return alert('Enter the full OTP code');
     await dispatch(verifyAuthOtp({ otp: otpCode }))
       .unwrap()
-      .then(() => setDebugOtp(''))
+      .then(() => {
+          // Auto-advance on success
+          dispatch(setStep(3));
+      })
       .catch((e) => alert(e?.message || 'OTP verification failed'));
   };
 
   const applyPromo = async () => {
     if (!promoInput) return;
-    await dispatch(applyCoupon({ code: promoInput, total_amount: grossTotal, onDate: sel.date || toYMD(new Date()) }))
+    await dispatch(applyCoupon({
+      code: promoInput,
+      total_amount: Math.max(0, grossTotal - offerDiscountAmount),
+      onDate: sel.date || toYMD(new Date())
+    }))
       .unwrap()
       .then(() => dispatch(setCouponCode(promoInput)))
       .catch(() => {});
@@ -604,12 +702,11 @@ export default function Booking() {
     <div className="flex items-center justify-between mb-6 px-4">
       {[
         { n: 1, l: 'Select' },
-        { n: 2, l: 'Auth' },
+        { n: 2, l: 'Verify' },
         { n: 3, l: 'Extras' },
         { n: 4, l: 'Pay' }
       ].map((s) => {
-        // Skip showing Auth step if logged in
-        if(hasToken && s.n === 2) return null;
+        if(hasToken && s.n === 2) return null; // Skip
         const isCompleted = step > s.n || (hasToken && s.n === 2);
         const isCurrent = step === s.n;
         const showCheck = isCompleted || (hasToken && s.n === 2);
@@ -618,22 +715,21 @@ export default function Booking() {
           <div key={s.n} className="flex flex-col items-center relative z-10 group">
             <div 
               className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-300 border-2 ${
-                isCurrent ? 'bg-white border-blue-600 text-blue-600 scale-110' :
+                isCurrent ? 'bg-white border-blue-600 text-blue-600 scale-110 ring-2 ring-blue-100' :
                 showCheck ? 'bg-blue-600 border-blue-600 text-white' : 
                 'bg-white border-gray-200 text-gray-300'
               }`}
             >
-              {showCheck && !isCurrent ? <Check size={16} /> : s.n}
+              {showCheck && !isCurrent ? <Check size={16} strokeWidth={3} /> : s.n}
             </div>
-            <span className={`text-[10px] mt-1.5 font-medium uppercase tracking-wide ${isCurrent || showCheck ? 'text-blue-600' : 'text-gray-300'}`}>
+            <span className={`text-[10px] mt-1.5 font-medium uppercase tracking-wide ${isCurrent ? 'text-blue-600' : showCheck ? 'text-gray-800' : 'text-gray-300'}`}>
               {s.l}
             </span>
           </div>
         )
       })}
-      {/* Connector Line */}
-      <div className="absolute left-8 right-8 top-[26px] h-[2px] bg-gray-100 -z-0">
-        <div className="h-full bg-blue-600 transition-all duration-500" style={{ width: `${((step-1)/(hasToken?2:3))*100}%` }}></div>
+      <div className="absolute left-8 right-8 top-[26px] h-[2px] bg-gray-100 -z-0 overflow-hidden rounded-full">
+        <div className="h-full bg-blue-600 transition-all duration-500 ease-out" style={{ width: `${((step-1)/(hasToken?2:3))*100}%` }}></div>
       </div>
     </div>
   );
@@ -641,26 +737,12 @@ export default function Booking() {
   const SelectionCarousel = () => {
     const activeTab = sel.itemType;
     const data = activeTab === 'attraction' ? attractions : combos;
-    const scrollRefs = useRef({});
-    const selectedKey = activeTab === 'attraction' ? sel.attractionId : sel.comboId;
-
-    useEffect(() => {
-      if (!selectedKey) return;
-      const cardRef = scrollRefs.current[`${activeTab}_${selectedKey}`];
-      if (cardRef?.scrollIntoView) {
-        cardRef.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
-      }
-    }, [activeTab, selectedKey]);
-
-    const currentMetaImage = selectedMeta.image;
-    const currentSummaryDate = sel.date ? dayjs(sel.date).format('DD MMM YYYY') : 'Pick a date';
-    const currentSummarySlot = sel.slotKey ? getSlotLabel(selectedSlot) : 'Choose a slot';
-
+    
     return (
       <div className="mb-8">
         {/* Type Toggle */}
         <div className="flex justify-center mb-6">
-          <div className="bg-gray-100 p-1 rounded-xl inline-flex">
+          <div className="bg-gray-100/80 p-1 rounded-xl inline-flex border border-gray-200">
             {['attraction', 'combo'].map(t => (
               <button
                 key={t}
@@ -668,7 +750,9 @@ export default function Booking() {
                   setSel(prev => ({ ...prev, itemType: t, attractionId: '', comboId: '', slotKey: '' }));
                 }}
                 className={`px-6 py-2 text-sm font-semibold rounded-lg capitalize transition-all duration-200 ${
-                  sel.itemType === t ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                  sel.itemType === t 
+                    ? 'bg-white text-blue-600 shadow-sm ring-1 ring-black/5' 
+                    : 'text-gray-500 hover:text-gray-700'
                 }`}
               >
                 {t}s
@@ -677,32 +761,38 @@ export default function Booking() {
           </div>
         </div>
 
+        {/* Hero Selection Card (Current Selection) */}
         {selectedMeta.title && (
-          <div className="max-w-3xl mx-auto mb-6">
-            <div className="flex items-center gap-4 rounded-2xl border border-blue-100 bg-gradient-to-r from-blue-50 to-purple-50 p-4 shadow-sm">
-              <div className="w-16 h-16 rounded-xl overflow-hidden bg-white border border-blue-100 flex items-center justify-center">
-                {currentMetaImage ? (
-                  <img src={currentMetaImage} alt="snowcity" loading="lazy" className="w-full h-full object-cover" />
+          <div className="max-w-2xl mx-auto mb-8 animate-in fade-in slide-in-from-top-2 duration-300">
+            <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-100 rounded-2xl p-4 flex items-center gap-4 shadow-sm relative overflow-hidden group">
+              <div className="absolute inset-0 bg-white/40 opacity-0 group-hover:opacity-100 transition-opacity" />
+              
+              <div className="w-20 h-20 rounded-xl overflow-hidden bg-white shadow-sm border border-white flex-shrink-0 relative z-10">
+                {/* Display Split Image for Combos */}
+                {activeTab === 'combo' && selectedMeta.previewImages?.length >= 2 ? (
+                    <div className="w-full h-full flex relative">
+                        <img src={selectedMeta.previewImages[0]} className="w-1/2 h-full object-cover" alt="" />
+                        <img src={selectedMeta.previewImages[1]} className="w-1/2 h-full object-cover" alt="" />
+                        {/* Divider line */}
+                        <div className="absolute inset-y-0 left-1/2 w-[1px] bg-white/50"></div>
+                    </div>
+                ) : selectedMeta.image ? (
+                    <img src={selectedMeta.image} alt="" className="w-full h-full object-cover" />
                 ) : (
-                  <ShoppingBag size={28} className="text-blue-400" />
+                    <div className="w-full h-full flex items-center justify-center text-gray-300"><ShoppingBag /></div>
                 )}
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs uppercase text-blue-500 tracking-wider">Currently selecting</p>
-                <h3 className="text-lg font-semibold text-gray-900 truncate">{selectedMeta.title}</h3>
-                <p className="text-sm text-gray-600 truncate">{currentSummaryDate} • {currentSummarySlot}</p>
-              </div>
-              <div className="text-right">
-                <p className="text-xs text-gray-500">Starts at</p>
-                <div className="flex flex-col items-end">
-                  <p className="text-2xl font-bold text-gray-900">₹{Math.round(selectedMeta.price || 0)}</p>
-                  {selectedMeta.hasDiscount ? (
-                    <div className="text-xs text-green-700 font-semibold flex items-center gap-2">
-                      <span className="line-through text-gray-400">₹{Math.round(selectedMeta.basePrice || 0)}</span>
-                      <span>Save {selectedMeta.discountPercent}%</span>
-                    </div>
-                  ) : null}
+
+              <div className="flex-1 min-w-0 relative z-10">
+                <div className="flex items-center gap-2 mb-1">
+                    <span className="px-2 py-0.5 bg-blue-600 text-white text-[10px] font-bold uppercase tracking-wider rounded-full">Selected</span>
                 </div>
+                <h3 className="text-lg font-bold text-gray-900 truncate">{selectedMeta.title}</h3>
+                <p className="text-sm text-blue-600 font-medium mt-0.5">₹{selectedMeta.price} <span className="text-gray-400 text-xs font-normal">per person</span></p>
+              </div>
+              
+              <div className="relative z-10 hidden sm:block">
+                 <Check className="text-blue-600 opacity-20" size={40} />
               </div>
             </div>
           </div>
@@ -713,14 +803,38 @@ export default function Booking() {
           {data.map(item => {
             const id = activeTab === 'attraction' ? getAttrId(item) : getComboId(item);
             const isSelected = String(activeTab === 'attraction' ? sel.attractionId : sel.comboId) === String(id);
-            const img = activeTab === 'attraction' ? getAttractionImage(item) : getComboPrimaryImage(item);
-            const comboPreview = activeTab === 'combo' ? getComboPreviewImages(item) : [];
-            const finalPrice = getPrice(item);
-            const basePrice = getBasePrice(item);
-            const hasDiscount = basePrice > 0 && finalPrice > 0 && finalPrice < basePrice;
-            const discountPercent = hasDiscount ? Math.round(getDiscountPercent(item)) : 0;
+            const comboPrice = activeTab === 'combo' ? Number(getPrice(item) || item.combo_price || item.price || 0) : 0;
+            const baseComboPrice = activeTab === 'combo' ? Number(getBasePrice(item) || item.original_price || item.base_price || 0) : 0;
+            const price = activeTab === 'combo'
+              ? (comboPrice || baseComboPrice || 0)
+              : Number(item.price || item.base_price || item.amount || 0);
+            const showComboDiscount = activeTab === 'combo' && baseComboPrice > price;
+            const comboDiscountPercent = showComboDiscount
+              ? Math.max(0, Math.round(((baseComboPrice - price) / baseComboPrice) * 100))
+              : 0;
             const title = activeTab === 'attraction' ? (item.title || item.name) : getComboLabel(item);
-            const cardKey = `${activeTab}_${id}`;
+            
+            // Image Logic for Card
+            let CardImage = null;
+            if (activeTab === 'combo') {
+                const previews = getComboPreviewImages(item);
+                if (previews.length >= 2) {
+                    // Split View
+                    CardImage = (
+                        <div className="w-full h-full flex relative">
+                            <img src={previews[0]} className="w-1/2 h-full object-cover transition-transform group-hover:scale-110 duration-700" alt="" />
+                            <img src={previews[1]} className="w-1/2 h-full object-cover transition-transform group-hover:scale-110 duration-700 delay-75" alt="" />
+                            <div className="absolute inset-y-0 left-1/2 w-0.5 bg-white shadow-[0_0_10px_rgba(0,0,0,0.2)]"></div>
+                        </div>
+                    );
+                } else {
+                    const single = getComboPrimaryImage(item);
+                    CardImage = single ? <img src={single} className="w-full h-full object-cover" alt="" /> : null;
+                }
+            } else {
+                const src = getAttractionImage(item);
+                CardImage = src ? <img src={src} className="w-full h-full object-cover transition-transform group-hover:scale-110 duration-500" alt="" /> : null;
+            }
 
             return (
               <div 
@@ -730,53 +844,40 @@ export default function Booking() {
                   [activeTab === 'attraction' ? 'attractionId' : 'comboId']: String(id),
                   slotKey: '' 
                 }))}
-                ref={(node) => {
-                  if (node) {
-                    scrollRefs.current[cardKey] = node;
-                  } else {
-                    delete scrollRefs.current[cardKey];
-                  }
-                }}
-                className={`snap-center flex-shrink-0 w-64 rounded-2xl cursor-pointer transition-all duration-200 group overflow-hidden bg-white shadow-sm hover:shadow-md border-2 ${
-                  isSelected ? 'border-blue-500 ring-2 ring-blue-100' : 'border-transparent hover:border-gray-200'
+                className={`snap-center flex-shrink-0 w-64 rounded-2xl cursor-pointer transition-all duration-200 group overflow-hidden bg-white shadow-sm hover:shadow-lg border-2 relative ${
+                  isSelected ? 'border-blue-600 ring-4 ring-blue-50 translate-y-[-2px]' : 'border-transparent hover:border-gray-200'
                 }`}
               >
-                <div className="h-40 bg-gray-100 relative">
-                  {img ? (
-                    <img src={img} alt="snowcity" loading="lazy" className="w-full h-full object-cover" />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-gray-300"><ShoppingBag size={32} /></div>
-                  )}
-                  {hasDiscount ? (
-                    <div className="absolute top-3 left-3 bg-green-600 text-white text-xs font-semibold px-2 py-1 rounded-full shadow">
-                      Save {discountPercent}%
-                    </div>
-                  ) : null}
+                <div className="h-40 bg-gray-100 relative overflow-hidden">
+                  {CardImage || <div className="w-full h-full flex items-center justify-center text-gray-300"><ShoppingBag size={32} /></div>}
+                  
+                  {/* Selection Overlay */}
                   {isSelected && (
-                    <div className="absolute top-3 right-3 bg-blue-600 text-white p-1.5 rounded-full shadow-lg animate-in zoom-in">
-                      <Check size={16} strokeWidth={3} />
+                    <div className="absolute inset-0 bg-blue-900/20 backdrop-blur-[1px] flex items-center justify-center animate-in fade-in duration-200">
+                      <div className="bg-white text-blue-600 p-2 rounded-full shadow-xl transform scale-110">
+                        <Check size={20} strokeWidth={3} />
+                      </div>
                     </div>
                   )}
-                  {comboPreview.length > 0 && (
-                    <div className="absolute bottom-3 left-3 flex -space-x-2">
-                      {comboPreview.map((src, idx) => (
-                        <span key={idx} className="w-8 h-8 rounded-full border-2 border-white overflow-hidden shadow">
-                          <img src={src} alt="snowcity" loading="lazy" className="w-full h-full object-cover" />
-                        </span>
-                      ))}
+                  
+                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-4 pt-12 space-y-1">
+                    <div className="flex items-baseline gap-2 text-white">
+                      <p className="font-bold text-lg drop-shadow-sm">₹{price}</p>
+                      {showComboDiscount && (
+                        <span className="text-sm text-white/80 line-through">₹{baseComboPrice}</span>
+                      )}
                     </div>
-                  )}
-                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-4 pt-12">
-                    <p className="text-white font-bold text-lg">₹{Math.round(finalPrice || basePrice || 0)}</p>
-                    {hasDiscount ? (
-                      <p className="text-xs text-white/80 line-through">₹{Math.round(basePrice)}</p>
-                    ) : null}
+                    {comboDiscountPercent > 0 && (
+                      <span className="inline-flex items-center text-[11px] font-semibold text-emerald-200">
+                        Save {comboDiscountPercent}%
+                      </span>
+                    )}
                   </div>
                 </div>
                 <div className="p-4">
-                  <h4 className="font-semibold text-gray-800 line-clamp-1 mb-1" title={title}>{title}</h4>
-                  <p className="text-xs text-gray-500">
-                    {activeTab === 'combo' ? 'Includes multiple activities' : 'Single entry ticket'}
+                  <h4 className="font-bold text-gray-800 line-clamp-1 mb-1" title={title}>{title}</h4>
+                  <p className="text-xs text-gray-500 line-clamp-1">
+                    {activeTab === 'combo' ? 'Multiple experiences' : 'Single attraction entry'}
                   </p>
                 </div>
               </div>
@@ -788,375 +889,528 @@ export default function Booking() {
   };
 
   /* --- MAIN RENDER --- */
-  return (
-    <div className="relative">
-      
-      {/* Desktop: Inline View / Mobile: Trigger */}
-      <div className={`
-        md:block max-w-7xl mx-auto px-4 py-8
-        ${isBookingOpen ? '' : 'hidden md:block'}
-      `}>
-        {/* Desktop Header (Only visible on desktop when not using modal) */}
-        <div className="hidden md:flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Book Your Tickets</h1>
-            <p className="text-gray-500 mt-1">Select your adventure and plan your visit.</p>
-          </div>
+  const OfferSelector = () => {
+    if (offersStatus === 'loading') {
+      return (
+        <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm text-sm text-gray-500">
+          Loading offers...
         </div>
-      </div>
+      );
+    }
+    if (!offers.length) return null;
 
-      {/* Mobile Trigger FAB */}
-      <div className="fixed bottom-6 right-6 z-40 md:hidden">
-        {!isBookingOpen && (
-          <button 
-            onClick={() => setIsBookingOpen(true)}
-            className="bg-gray-900 text-white p-4 rounded-full shadow-xl flex items-center gap-2 animate-bounce-slow hover:scale-105 transition-transform"
-          >
-            <Ticket size={24} />
-            <span className="font-bold">Book Now</span>
-          </button>
-        )}
-      </div>
-
-      {/* Overlay (Mobile Only) */}
-      {isBookingOpen && (
-        <div 
-          className="md:hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-40 transition-opacity duration-300"
-          onClick={handleCloseBooking}
-        />
-      )}
-
-      {/* Main Booking Container (Responsive) */}
-      <div className={`
-        bg-white shadow-2xl transition-all duration-300 ease-out
-        
-        /* Mobile Styles: Bottom Sheet */
-        fixed bottom-0 left-0 right-0 z-50 rounded-t-3xl max-h-[92vh] overflow-hidden flex flex-col
-        ${isBookingOpen ? 'translate-y-0' : 'translate-y-full md:translate-y-0'}
-
-        /* Desktop Styles: Embedded Card */
-        md:static md:shadow-none md:rounded-none md:max-h-none md:bg-transparent md:max-w-5xl md:mx-auto
-      `}>
-        
-        {/* Desktop Layout Split */}
-        <div className="md:grid md:grid-cols-12 md:gap-8">
-          
-          {/* Left Column: Main Form */}
-          <div className="md:col-span-8 bg-white md:rounded-2xl md:border md:border-gray-100 md:shadow-sm md:p-0">
-            
-            {/* Header */}
-            <div className="sticky top-0 bg-white/95 backdrop-blur z-20 px-6 py-6 border-b border-gray-100">
-              <div className="flex items-center justify-between mb-6 md:hidden">
-                <h2 className="text-xl font-bold text-gray-800">Book Tickets</h2>
-                <button onClick={handleCloseBooking} className="p-2 bg-gray-100 rounded-full text-gray-500">
-                  <X size={20} />
-                </button>
-              </div>
-              <ProgressBar />
-            </div>
-
-            {/* Scrollable Content Area */}
-            <div ref={contentRef} className="px-6 py-6 overflow-y-auto md:overflow-visible max-h-[calc(90vh-140px)] md:max-h-none pb-32 md:pb-6">
-              
-              {/* STEP 1 */}
-              {step === 1 && (
-                <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                  <SelectionCarousel />
-
-                  {/* Date/Slot Grid */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-2">
-                      <label className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-2">
-                        <Calendar size={14} /> Select Date
-                      </label>
-                      <input
-                        type="date"
-                        className="w-full p-3.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-medium cursor-pointer transition-all hover:border-gray-300"
-                        min={todayYMD()}
-                        value={sel.date}
-                        onChange={(e) => setSel(s => ({ ...s, date: e.target.value, slotKey: '' }))}
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <label className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-2">
-                        <Clock size={14} /> Select Time
-                      </label>
-                      <div className="relative">
-                        <select
-                          className="w-full p-3.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-medium appearance-none cursor-pointer disabled:bg-gray-100 disabled:text-gray-400 transition-all hover:border-gray-300"
-                          value={sel.slotKey}
-                          onChange={(e) => setSel(st => ({ ...st, slotKey: e.target.value }))}
-                          disabled={!sel.attractionId && !sel.comboId}
-                        >
-                          <option value="">{(!sel.attractionId && !sel.comboId) ? 'Choose an activity above' : 'Select a time slot'}</option>
-                          {slots.items.map((s, i) => {
-                            const sid = getSlotKey(s, i);
-                            return <option key={sid} value={sid} disabled={!slotHasCapacity(s)}>{getSlotLabel(s)} {!slotHasCapacity(s) ? '(Full)' : ''}</option>;
-                          })}
-                        </select>
-                        <ChevronRight size={16} className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400 rotate-90" />
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Quantity & Add */}
-                  <div className="bg-gray-50 rounded-2xl p-5 border border-gray-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
+    return (
+      <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm">
+        <div className="flex items-center justify-between mb-3">
+          <h4 className="text-sm font-semibold text-gray-800">Available Offers</h4>
+          {selectedOfferId && (
+            <button
+              type="button"
+              onClick={() => setSelectedOfferId('')}
+              className="text-xs font-medium text-blue-600 hover:underline"
+            >
+              Remove
+            </button>
+          )}
+        </div>
+        <div className="space-y-3">
+          {offers.map((offer) => {
+            const id = String(getOfferId(offer));
+            if (!id) return null;
+            const isActive = String(selectedOfferId) === id;
+            const potential = computeOfferDiscount(offer, grossTotal);
+            const preview = offer.discount_percent ?? offer.discountPercent
+              ? `${offer.discount_percent ?? offer.discountPercent}% off`
+              : offer.discount_value ?? offer.discountValue
+              ? `Save ₹${offer.discount_value ?? offer.discountValue}`
+              : 'Special savings';
+            return (
+              <label
+                key={id}
+                className={`flex gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                  isActive ? 'border-blue-500 bg-blue-50/40 shadow-sm' : 'border-gray-200 hover:border-blue-200'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="selected-offer"
+                  className="mt-1"
+                  checked={isActive}
+                  onChange={() => setSelectedOfferId(id)}
+                />
+                <div className="flex-1">
+                  <div className="flex items-center justify-between">
                     <div>
-                      <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 block">Number of Tickets</label>
-                      <div className="flex items-center gap-4 bg-white rounded-xl p-1.5 border border-gray-200 w-fit">
-                        <button onClick={() => setSel(s => ({...s, qty: Math.max(1, s.qty - 1)}))} className="w-10 h-10 flex items-center justify-center rounded-lg bg-gray-50 text-gray-600 hover:bg-gray-100 active:scale-95 transition">
-                          <Minus size={18} />
-                        </button>
-                        <span className="font-bold text-xl w-8 text-center text-gray-800">{sel.qty}</span>
-                        <button onClick={() => setSel(s => ({...s, qty: Math.max(1, s.qty + 1)}))} className="w-10 h-10 flex items-center justify-center rounded-lg bg-gray-900 text-white hover:bg-black active:scale-95 transition shadow-md">
-                          <Plus size={18} />
-                        </button>
-                      </div>
+                      <p className="text-sm font-semibold text-gray-900">{getOfferTitle(offer)}</p>
+                      {getOfferSummary(offer) ? (
+                        <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{getOfferSummary(offer)}</p>
+                      ) : null}
                     </div>
-                    
-                    <div className="flex items-center gap-4 md:w-auto w-full">
-                      <div className="text-right md:mr-4 flex-1 md:flex-none">
-                        <div className="text-xs text-gray-500 mb-0.5">Item Total</div>
-                        <div className="text-2xl font-bold text-gray-900">₹{ticketsSubtotal}</div>
-                      </div>
-                      <button
-                        onClick={addSelectionToCart}
-                        disabled={!selectionReady}
-                        className="flex-1 md:flex-none px-8 py-3.5 bg-blue-600 text-white rounded-xl font-bold shadow-lg shadow-blue-200 hover:bg-blue-700 hover:shadow-xl disabled:opacity-50 disabled:shadow-none disabled:cursor-not-allowed transition-all active:scale-95 flex items-center justify-center gap-2"
-                      >
-                        {editingKey ? 'Update' : 'Add to Order'}
-                      </button>
-                    </div>
+                    <span className="text-xs font-semibold text-blue-600 bg-blue-50 px-2 py-1 rounded-full">{preview}</span>
                   </div>
-
-                  {/* Cart Preview */}
-                  {hasCartItems && (
-                    <div className="border-t pt-6">
-                      <h4 className="text-sm font-bold text-gray-900 uppercase tracking-wide mb-4">Current Order</h4>
-                      <div className="space-y-3">
-                        {cartItems.map(item => (
-                          <div key={item.key} className="flex justify-between items-center bg-white p-4 rounded-xl border border-gray-200 shadow-sm hover:border-blue-200 transition-colors group">
-                            <div>
-                              <div className="font-bold text-gray-800">{item.title}</div>
-                              <div className="text-sm text-gray-500 mt-1">
-                                {item.dateLabel} • {item.slotLabel} • <span className="text-gray-900 font-medium">{item.quantity} Tickets</span>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-4">
-                              <span className="font-bold text-gray-900 text-lg">₹{item.unitPrice * item.quantity}</span>
-                              <div className="flex gap-1">
-                                <button onClick={() => onEditCartItem(item)} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"><Edit2 size={16}/></button>
-                                <button onClick={() => onRemoveCartItem(item.key)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={16}/></button>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
+                  {potential > 0 && (
+                    <p className="text-xs text-green-600 mt-1">Save up to ₹{potential.toFixed(0)} with this offer</p>
                   )}
                 </div>
-              )}
+              </label>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
 
-              {/* STEP 2, 3, 4 (Simplified for brevity, keeping logic) */}
-              {step === 2 && (
-                <div className="space-y-6 max-w-md mx-auto py-4">
-                  <div className="text-center mb-6">
-                    <h3 className="text-xl font-bold text-gray-900">Verify Your Identity</h3>
-                    <p className="text-gray-500 text-sm mt-1">We need your contact details to send your tickets.</p>
-                  </div>
-
-                  <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4 text-sm text-blue-900/80">
-                    <div className="flex items-center gap-2 font-semibold text-blue-900">
-                      <UserPlus size={16} />
-                      Sign in or create your SnowCity profile
-                    </div>
-                    <p className="mt-2 leading-relaxed">
-                      Enter your name, email, and mobile once. We will automatically create a new profile or
-                      sign you back in if you have visited before. The same OTP flow works for both new and
-                      existing guests.
-                    </p>
-                    <ul className="mt-3 space-y-1 text-xs text-blue-900/70 list-disc list-inside">
-                      <li>New visitor: complete the fields, verify OTP, and your profile is created instantly.</li>
-                      <li>Returning visitor: use the same email/phone to receive an OTP and continue booking.</li>
-                      <li>Already logged in: this step is skipped automatically.</li>
-                    </ul>
-                  </div>
-                  {/* ... Auth inputs (same as previous) ... */}
-                  <div className="space-y-4">
-                    <div className="relative">
-                        <User className="absolute left-3 top-3.5 text-gray-400" size={18} />
-                        <input placeholder="Full Name" className="w-full pl-10 p-3.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" value={contact.name} onChange={e => dispatch(setContact({name: e.target.value}))} />
-                    </div>
-                    <div className="relative">
-                        <Mail className="absolute left-3 top-3.5 text-gray-400" size={18} />
-                        <input placeholder="Email" type="email" className="w-full pl-10 p-3.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" value={contact.email} onChange={e => dispatch(setContact({email: e.target.value}))} />
-                    </div>
-                    <div className="flex gap-3">
-                        <div className="relative flex-1">
-                            <Phone className="absolute left-3 top-3.5 text-gray-400" size={18} />
-                            <input placeholder="Mobile" type="tel" className="w-full pl-10 p-3.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" value={contact.phone} onChange={e => dispatch(setContact({phone: fmtPhone(e.target.value)}))} />
-                        </div>
-                        <button onClick={sendOTP} className="bg-gray-900 text-white px-6 rounded-xl text-sm font-bold hover:bg-black disabled:opacity-50">
-                          {otp.sent ? 'Resend OTP' : 'Send OTP & Sign In'}
-                        </button>
-                    </div>
-                    {otp.sent && (
-                        <div className="flex gap-3 mt-4 animate-in slide-in-from-top-2">
-                            <input placeholder="OTP" className="flex-1 p-3.5 text-center tracking-widest font-bold text-lg border-2 border-blue-100 rounded-xl focus:border-blue-500 outline-none" value={otpCode} onChange={e => setOtpCode(e.target.value)} maxLength={6} />
-                            <button onClick={verifyOTP} className="bg-blue-600 text-white px-8 rounded-xl font-bold shadow-lg hover:bg-blue-700">Verify & Continue</button>
-                        </div>
-                    )}
-                    {!otp.sent && (
-                      <p className="text-xs text-gray-500 text-center">
-                        We&apos;ll send a one-time password to confirm your identity.
-                      </p>
-                    )}
-                    {debugOtp && (
-                      <div className="text-xs text-green-600 bg-green-50 border border-green-100 rounded-xl p-3 text-center">
-                        Testing OTP: <span className="font-mono font-semibold">{debugOtp}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* STEP 3 & 4 content ... (kept similar structure) */}
-              {step === 3 && (
-                 <div className="space-y-6">
-                    {/* Item Tabs */}
-                    {cartItems.length > 1 && (
-                        <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
-                        {cartItems.map(item => (
-                            <button 
-                            key={item.key}
-                            onClick={() => dispatch(setActiveCartItem(item.key))}
-                            className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap border transition-all ${
-                                activeItemKey === item.key ? 'bg-gray-900 text-white border-gray-900' : 'border-gray-200 text-gray-600 hover:bg-gray-50'
-                            }`}
-                            >
-                            {item.title}
-                            </button>
-                        ))}
-                        </div>
-                    )}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {addonsState.items.map(addon => {
-                            const key = String(getAddonId(addon));
-                            const currentQty = currentItemAddons.get(key)?.quantity || 0;
-                            const price = getAddonPrice(addon);
-                            return (
-                                <div key={key} className={`flex items-center p-3 border rounded-xl transition-all ${currentQty > 0 ? 'border-blue-500 bg-blue-50/30 shadow-sm' : 'border-gray-100 hover:border-gray-200'}`}>
-                                    <div className="w-16 h-16 bg-gray-100 rounded-lg flex-shrink-0 overflow-hidden">
-                                        {getAddonImage(addon) && <img src={getAddonImage(addon)} alt="snowcity" loading="lazy" className="w-full h-full object-cover" />}
-                                    </div>
-                                    <div className="flex-1 px-3">
-                                        <div className="font-semibold text-gray-800 text-sm">{getAddonName(addon)}</div>
-                                        <div className="text-gray-500 text-xs mt-0.5">₹{price}</div>
-                                    </div>
-                                    <div className="flex items-center gap-3 bg-white p-1 rounded-lg border border-gray-200 shadow-sm">
-                                        <button className="w-7 h-7 flex items-center justify-center hover:bg-gray-100 rounded text-gray-600" onClick={() => {
-                                            const n = Math.max(0, currentQty - 1);
-                                            const next = new Map(currentItemAddons);
-                                            if(n===0) next.delete(key); else next.set(key, { addon_id: getAddonId(addon), quantity: n, price, name: getAddonName(addon) });
-                                            setCartAddons(new Map(cartAddons).set(activeItemKey, next));
-                                        }} disabled={currentQty===0}>-</button>
-                                        <span className="font-bold text-sm w-4 text-center">{currentQty}</span>
-                                        <button className="w-7 h-7 flex items-center justify-center hover:bg-gray-100 rounded text-blue-600" onClick={() => {
-                                            const n = currentQty + 1;
-                                            const next = new Map(currentItemAddons);
-                                            next.set(key, { addon_id: getAddonId(addon), quantity: n, price, name: getAddonName(addon) });
-                                            setCartAddons(new Map(cartAddons).set(activeItemKey, next));
-                                        }}>+</button>
-                                    </div>
-                                </div>
-                            )
-                        })}
-                    </div>
-                 </div>
-              )}
-
-              {step === 4 && (
-                  <div className="space-y-6 max-w-lg mx-auto">
-                      <div className="bg-gray-50 rounded-2xl p-6 border border-gray-200">
-                          <h3 className="font-bold text-gray-900 mb-4 border-b border-gray-200 pb-2">Payment Summary</h3>
-                          <div className="space-y-3 text-sm">
-                              <div className="flex justify-between text-gray-600"><span>Subtotal (Tickets)</span> <span>₹{cartTicketsTotal}</span></div>
-                              <div className="flex justify-between text-gray-600"><span>Add-ons</span> <span>₹{totalAddonsCost}</span></div>
-                              {discount > 0 && <div className="flex justify-between text-green-600"><span>Discount</span> <span>-₹{discount}</span></div>}
-                              <div className="flex justify-between font-bold text-xl text-gray-900 pt-3 border-t border-gray-200 mt-2">
-                                  <span>Total</span>
-                                  <span>₹{finalTotal}</span>
-                              </div>
-                          </div>
-                      </div>
-                      <div className="flex gap-3">
-                          <input placeholder="PROMO CODE" className="flex-1 uppercase p-3 border border-gray-300 rounded-xl outline-none focus:border-blue-500 text-sm font-bold tracking-wider" value={promoInput} onChange={e => setPromoInput(e.target.value)} />
-                          <button onClick={applyPromo} className="px-5 bg-gray-900 text-white rounded-xl text-sm font-bold hover:bg-black">APPLY</button>
-                      </div>
-                  </div>
-              )}
-
-            </div>
-          </div>
-
-          {/* Right Column (Desktop): Cart Sticky Summary */}
-          <div className="hidden md:flex md:col-span-4 flex-col gap-4 sticky top-24 h-fit">
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-              <h3 className="text-lg font-bold text-gray-900 mb-4">Total Payable</h3>
-              <div className="text-4xl font-black text-blue-600 mb-2">₹{finalTotal}</div>
-              <p className="text-gray-400 text-sm mb-6">Includes all taxes</p>
-              
+  return (
+    <>
+      {!isDesktop && (
+        <>
+          <div className="fixed bottom-6 right-6 z-40 md:hidden">
+            {!isBookingOpen && (
               <button 
-                onClick={step === 4 ? onPlaceOrderAndPay : handleNext}
-                disabled={(step === 2 && !otp.verified) || (!hasCartItems && !selectionReady)}
-                className="w-full py-4 bg-blue-600 text-white rounded-xl font-bold text-lg shadow-xl shadow-blue-200 hover:bg-blue-700 hover:shadow-2xl hover:-translate-y-0.5 transition-all active:translate-y-0 flex items-center justify-center gap-2 disabled:opacity-50 disabled:shadow-none disabled:transform-none disabled:cursor-not-allowed"
+                onClick={() => setIsBookingOpen(true)}
+                className="bg-gray-900 text-white p-4 rounded-full shadow-2xl flex items-center gap-2 animate-bounce-slow hover:scale-105 transition-transform border-2 border-white/20"
               >
-                {step === 4 ? (creating.status === 'loading' ? 'Processing...' : 'Pay Securely') : (
-                  <>Proceed <ArrowRight size={20} /></>
-                )}
+                <Ticket size={24} />
+                <span className="font-bold">Book Now</span>
               </button>
+            )}
+          </div>
 
-              {/* Desktop Mini-Cart List */}
+          {isBookingOpen && (
+            <div 
+              className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm z-40 transition-opacity duration-300"
+              onClick={() => {
+                  if(window.confirm("Are you sure you want to close? Your progress may be lost.")) {
+                      handleCloseBooking();
+                  }
+              }}
+            />
+          )}
+        </>
+      )}
+
+      {/* --- Main Booking Container --- */}
+      <div 
+        className={`${
+          isDesktop
+            ? 'relative z-50 bg-white shadow-2xl rounded-3xl border border-gray-100 max-w-6xl mx-auto my-10 flex flex-col min-h-[80vh]'
+            : `fixed z-50 bg-white transition-all duration-300 ease-in-out shadow-2xl bottom-0 left-0 right-0 rounded-t-[32px] max-h-[95vh] flex flex-col ${isBookingOpen ? 'translate-y-0' : 'translate-y-full'}`
+        }`}
+      >
+        
+        {/* Header */}
+        <div className={`${isDesktop ? 'px-8 pt-8 pb-4 border-b border-gray-100 rounded-t-3xl bg-white' : 'sticky top-0 bg-white z-20 px-6 pt-6 pb-2 border-b border-gray-100 rounded-t-[32px]'}`}>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-bold text-gray-900">
+              {step === 1 ? 'Select Experience' : step === 2 ? 'Guest Details' : step === 3 ? 'Add Extras' : 'Checkout'}
+            </h2>
+            <button 
+              onClick={handleCloseBooking}
+              className="p-2 hover:bg-gray-100 rounded-full text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              <X size={24} />
+            </button>
+          </div>
+          <ProgressBar />
+        </div>
+
+        {/* Scrollable Body */}
+        <div className={`${isDesktop ? 'flex-1 px-8 py-8 pb-16 overflow-visible' : 'flex-1 overflow-y-auto px-6 py-6 pb-32 custom-scrollbar'}`}>
+          
+          {/* STEP 1: SELECTION */}
+          {step === 1 && (
+            <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+              <SelectionCarousel />
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Date */}
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-2">
+                    <Calendar size={14} className="text-blue-500" /> Select Date
+                  </label>
+                  <input
+                    type="date"
+                    className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-medium cursor-pointer transition-all hover:border-gray-300"
+                    min={todayYMD()}
+                    value={sel.date}
+                    onChange={(e) => setSel(s => ({ ...s, date: e.target.value, slotKey: '' }))}
+                  />
+                </div>
+
+                {/* Slot */}
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-2">
+                    <Clock size={14} className="text-blue-500" /> Select Time
+                  </label>
+                  <div className="relative">
+                    <select
+                      className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-medium appearance-none cursor-pointer disabled:bg-gray-100 disabled:text-gray-400 transition-all hover:border-gray-300"
+                      value={sel.slotKey}
+                      onChange={(e) => setSel(st => ({ ...st, slotKey: e.target.value }))}
+                      disabled={!sel.attractionId && !sel.comboId}
+                    >
+                      <option value="">{(!sel.attractionId && !sel.comboId) ? 'Choose an activity above' : 'Select a time slot'}</option>
+                      {slots.items.map((s, i) => {
+                        const sid = getSlotKey(s, i);
+                        return <option key={sid} value={sid} disabled={!slotHasCapacity(s)}>{getSlotLabel(s)} {!slotHasCapacity(s) ? '(Full)' : ''}</option>;
+                      })}
+                    </select>
+                    <ChevronRight size={16} className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400 rotate-90" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Quantity & Add Row */}
+              <div className="bg-white rounded-2xl p-5 border-2 border-gray-100 flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-sm">
+                <div>
+                  <label className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 block">Tickets Required</label>
+                  <div className="flex items-center gap-4 bg-gray-50 rounded-xl p-1.5 border border-gray-200 w-fit">
+                    <button onClick={() => setSel(s => ({...s, qty: Math.max(1, s.qty - 1)}))} className="w-10 h-10 flex items-center justify-center rounded-lg bg-white text-gray-600 shadow-sm hover:text-blue-600 active:scale-95 transition">
+                      <Minus size={18} />
+                    </button>
+                    <span className="font-bold text-xl w-10 text-center text-gray-800">{sel.qty}</span>
+                    <button onClick={() => setSel(s => ({...s, qty: Math.max(1, s.qty + 1)}))} className="w-10 h-10 flex items-center justify-center rounded-lg bg-gray-900 text-white shadow-md hover:bg-black active:scale-95 transition">
+                      <Plus size={18} />
+                    </button>
+                  </div>
+                </div>
+                
+                <div className="flex flex-col md:items-end gap-2 flex-1">
+                  <div className="text-right">
+                    <div className="text-xs text-gray-400 font-medium uppercase">Total Price</div>
+                    <div className="text-3xl font-black text-gray-900 tracking-tight">₹{ticketsSubtotal}</div>
+                  </div>
+                  <button
+                    onClick={addSelectionToCart}
+                    disabled={!selectionReady}
+                    className="w-full md:w-auto px-8 py-3.5 bg-blue-600 text-white rounded-xl font-bold shadow-lg shadow-blue-200 hover:bg-blue-700 hover:shadow-xl disabled:opacity-50 disabled:shadow-none disabled:cursor-not-allowed transition-all active:scale-95 flex items-center justify-center gap-2"
+                  >
+                    {editingKey ? 'Update Selection' : 'Add to Order'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Cart Preview */}
               {hasCartItems && (
-                <div className="mt-6 border-t pt-6">
-                    <div className="text-xs font-bold text-gray-400 uppercase mb-3">Selected Items</div>
-                    <div className="space-y-2">
-                        {cartItems.map(item => (
-                            <div key={item.key} className="flex justify-between text-sm text-gray-600">
-                                <span>{item.quantity}x {item.title}</span>
-                                <span className="font-medium">₹{item.unitPrice * item.quantity}</span>
-                            </div>
-                        ))}
-                    </div>
+                <div className="border-t pt-6 animate-fade-in">
+                  <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">In Your Bag</h4>
+                  <div className="space-y-3">
+                    {cartItems.map(item => (
+                      <div key={item.key} className="flex justify-between items-center bg-white p-4 rounded-xl border border-gray-200 shadow-sm hover:border-blue-200 transition-all group">
+                        <div>
+                          <div className="font-bold text-gray-800 text-base">{item.title}</div>
+                          <div className="text-sm text-gray-500 mt-1 flex items-center gap-2">
+                            <span className="bg-gray-100 px-2 py-0.5 rounded text-xs font-medium">{item.dateLabel}</span>
+                            <span>{item.slotLabel}</span>
+                            <span className="w-1 h-1 rounded-full bg-gray-300"></span>
+                            <span className="text-blue-600 font-semibold">{item.quantity} Tickets</span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-4">
+                          <span className="font-bold text-gray-900 text-lg">₹{item.unitPrice * item.quantity}</span>
+                          <div className="flex gap-1">
+                            <button onClick={() => onEditCartItem(item)} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"><Edit2 size={18}/></button>
+                            <button onClick={() => onRemoveCartItem(item.key)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={18}/></button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
-          </div>
+          )}
+
+          {/* STEP 2: AUTH (OTP) */}
+          {step === 2 && !hasToken && (
+            <div className="space-y-6 max-w-md mx-auto animate-in fade-in slide-in-from-right-8 duration-300">
+              <div className="text-center mb-4">
+                <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <UserPlus size={32} />
+                </div>
+                <h3 className="text-xl font-bold text-gray-900">Guest Details</h3>
+                <p className="text-gray-500 text-sm mt-1">Enter your details to receive tickets via Email & SMS.</p>
+              </div>
+
+              <div className="space-y-5">
+                {/* Name */}
+                <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-gray-500 uppercase ml-1">Full Name</label>
+                    <div className="relative group">
+                        <User className="absolute left-4 top-3.5 text-gray-400 group-focus-within:text-blue-500 transition-colors" size={18} />
+                        <input 
+                            placeholder="John Doe" 
+                            className="w-full pl-11 p-3.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none transition-all font-medium"
+                            value={contact.name} 
+                            onChange={(e) => dispatch(setContact({ name: e.target.value }))} 
+                        />
+                    </div>
+                </div>
+
+                {/* Email */}
+                <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-gray-500 uppercase ml-1">Email Address</label>
+                    <div className="relative group">
+                        <Mail className="absolute left-4 top-3.5 text-gray-400 group-focus-within:text-blue-500 transition-colors" size={18} />
+                        <input 
+                            placeholder="name@example.com" 
+                            type="email"
+                            className={`w-full pl-11 p-3.5 bg-gray-50 border rounded-xl focus:ring-2 focus:bg-white outline-none transition-all font-medium ${contactErrors.email ? 'border-red-300 focus:ring-red-200' : 'border-gray-200 focus:ring-blue-500'}`}
+                            value={contact.email} 
+                            onChange={(e) => {
+                                dispatch(setContact({ email: e.target.value }));
+                                if(contactErrors.email) setContactErrors(p => ({...p, email: undefined}));
+                            }} 
+                        />
+                    </div>
+                    {contactErrors.email && <p className="text-xs text-red-500 ml-1 flex items-center gap-1"><AlertCircle size={12}/> {contactErrors.email}</p>}
+                </div>
+
+                {/* Phone Group */}
+                <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-gray-500 uppercase ml-1">Mobile Number</label>
+                    <div className="flex gap-3">
+                        {/* Country Code Dropdown */}
+                        <div className="relative w-32">
+                            <div className="absolute left-3 top-3.5 z-10 pointer-events-none">
+                                <Globe size={18} className="text-gray-400" />
+                            </div>
+                            <select 
+                                className="w-full pl-10 pr-8 p-3.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none appearance-none font-medium text-sm"
+                                value={countryCode}
+                                onChange={e => setCountryCode(e.target.value)}
+                            >
+                                {COUNTRY_CODES.map(c => (
+                                    <option key={c.code} value={c.code}>{c.code}</option>
+                                ))}
+                            </select>
+                            <ChevronRight size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 rotate-90 pointer-events-none" />
+                        </div>
+
+                        {/* Phone Input */}
+                        <div className="relative flex-1 group">
+                            <Phone className="absolute left-4 top-3.5 text-gray-400 group-focus-within:text-blue-500 transition-colors" size={18} />
+                            <input 
+                                placeholder="98765 43210" 
+                                type="tel"
+                                maxLength={10}
+                                className={`w-full pl-11 p-3.5 bg-gray-50 border rounded-xl focus:ring-2 focus:bg-white outline-none transition-all font-medium tracking-wide ${contactErrors.phone ? 'border-red-300 focus:ring-red-200' : 'border-gray-200 focus:ring-blue-500'}`}
+                                value={phoneLocal} 
+                                onChange={handlePhoneChange}
+                            />
+                        </div>
+                    </div>
+                    {contactErrors.phone && <p className="text-xs text-red-500 ml-1 flex items-center gap-1"><AlertCircle size={12}/> {contactErrors.phone}</p>}
+                </div>
+
+                {/* OTP Action */}
+                {!otp.sent ? (
+                    <button 
+                        onClick={sendOTP}
+                        disabled={otp.status === 'loading'}
+                        className="w-full bg-gray-900 text-white py-4 rounded-xl font-bold text-base shadow-lg hover:bg-black transition-all disabled:opacity-70 flex items-center justify-center gap-2 mt-4"
+                    >
+                        {otp.status === 'loading' ? <Loader className="w-5 h-5 animate-spin" /> : 'Send OTP Verification'}
+                    </button>
+                ) : (
+                    <div className="mt-6 bg-blue-50 border border-blue-100 p-5 rounded-2xl animate-in fade-in slide-in-from-bottom-2">
+                        <p className="text-sm text-blue-800 mb-3 font-medium">Enter OTP sent to {countryCode} {phoneLocal}</p>
+                        <div className="flex gap-3">
+                            <input 
+                                placeholder="XXXXXX" 
+                                className="flex-1 p-3.5 text-center tracking-[0.5em] font-bold text-xl border-2 border-blue-200 rounded-xl focus:border-blue-600 focus:ring-4 focus:ring-blue-100 outline-none bg-white transition-all"
+                                maxLength={6}
+                                value={otpCode} 
+                                onChange={(e) => setOtpCode(e.target.value)} 
+                            />
+                            <button 
+                                onClick={verifyOTP}
+                                className="bg-blue-600 text-white px-8 rounded-xl font-bold shadow-lg hover:bg-blue-700 transition-colors"
+                            >
+                                Verify
+                            </button>
+                        </div>
+                        <button onClick={sendOTP} className="text-xs text-blue-600 font-medium mt-3 hover:underline">Resend Code</button>
+                    </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* STEP 3: ADDONS */}
+          {step === 3 && (
+            <div className="space-y-6 animate-in fade-in slide-in-from-right-8 duration-300">
+              {cartItems.length > 1 && (
+                <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
+                  {cartItems.map(item => (
+                    <button 
+                      key={item.key}
+                      onClick={() => dispatch(setActiveCartItem(item.key))}
+                      className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap border transition-all ${
+                        activeItemKey === item.key ? 'bg-gray-900 text-white border-gray-900 shadow-md' : 'border-gray-200 text-gray-600 bg-white hover:bg-gray-50'
+                      }`}
+                    >
+                      {item.title}
+                    </button>
+                  ))}
+                </div>
+              )}
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-20">
+                {addonsState.items.map(addon => {
+                  const key = String(getAddonId(addon));
+                  const currentQty = currentItemAddons.get(key)?.quantity || 0;
+                  const price = getAddonPrice(addon);
+
+                  const changeQty = (delta) => {
+                    const nextQty = Math.max(0, currentQty + delta);
+                    const nextMap = new Map(currentItemAddons);
+                    if (nextQty === 0) nextMap.delete(key);
+                    else nextMap.set(key, { 
+                      addon_id: getAddonId(addon), 
+                      quantity: nextQty, 
+                      price, 
+                      name: getAddonName(addon) 
+                    });
+                    setCartAddons(prev => new Map(prev).set(activeItemKey, nextMap));
+                  };
+
+                  return (
+                    <div key={key} className={`flex items-center p-3 border rounded-2xl transition-all duration-200 ${currentQty > 0 ? 'border-blue-500 bg-blue-50/40 ring-1 ring-blue-200' : 'border-gray-100 bg-white hover:border-gray-300'}`}>
+                      <div className="w-16 h-16 bg-gray-100 rounded-xl flex-shrink-0 overflow-hidden relative">
+                        {getAddonImage(addon) ? (
+                          <img src={getAddonImage(addon)} alt="" className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-gray-300"><ShoppingBag size={20}/></div>
+                        )}
+                      </div>
+                      <div className="flex-1 px-4">
+                        <div className="font-bold text-gray-800 text-sm">{getAddonName(addon)}</div>
+                        <div className="text-gray-500 text-xs mt-0.5 font-medium">₹{price}</div>
+                      </div>
+                      <div className="flex items-center gap-3 bg-white p-1.5 rounded-xl border border-gray-200 shadow-sm">
+                        <button className="w-8 h-8 flex items-center justify-center hover:bg-gray-100 rounded-lg text-gray-600 transition-colors" onClick={() => changeQty(-1)} disabled={currentQty===0}>
+                            <Minus size={16}/>
+                        </button>
+                        <span className="font-bold text-sm w-4 text-center">{currentQty}</span>
+                        <button className="w-8 h-8 flex items-center justify-center bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg transition-colors" onClick={() => changeQty(1)}>
+                            <Plus size={16}/>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* STEP 4: SUMMARY */}
+          {step === 4 && (
+            <div className="space-y-6 max-w-lg mx-auto animate-in fade-in slide-in-from-right-8 duration-300 pb-20">
+              <OfferSelector />
+              <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
+                <h3 className="font-bold text-gray-900 mb-4 text-lg flex items-center gap-2">
+                    <ShoppingBag className="text-blue-600" size={20} />
+                    Order Summary
+                </h3>
+                {couponApplied && (
+                  <div className="mb-4 rounded-xl bg-emerald-50 border border-emerald-100 p-3 text-sm text-emerald-700">
+                    <div className="font-semibold text-emerald-800">Coupon {String(coupon.code || coupon.data?.code).toUpperCase()} applied</div>
+                    <div className="flex items-center justify-between mt-1 text-emerald-700">
+                      <span>{coupon.data?.description || 'Discount applied successfully'}</span>
+                      <span className="font-bold">-₹{couponDiscount.toFixed(0)}</span>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Order Items List (Compact) */}
+                <div className="mb-4 space-y-2 max-h-40 overflow-y-auto custom-scrollbar pr-2">
+                    {cartItems.map(item => (
+                        <div key={item.key} className="flex justify-between text-sm py-2 border-b border-dashed border-gray-100 last:border-0">
+                            <div className="text-gray-700">
+                                <span className="font-bold text-gray-900">{item.quantity}x</span> {item.title}
+                                <div className="text-xs text-gray-400">{item.dateLabel}</div>
+                            </div>
+                            <div className="font-medium text-gray-900">₹{item.unitPrice * item.quantity}</div>
+                        </div>
+                    ))}
+                    {/* Addons Summary */}
+                    {totalAddonsCost > 0 && (
+                        <div className="flex justify-between text-sm py-2 border-t border-gray-100 pt-3">
+                            <div className="text-gray-600 font-medium">Extras / Add-ons</div>
+                            <div className="font-medium text-gray-900">₹{totalAddonsCost}</div>
+                        </div>
+                    )}
+                </div>
+
+                {/* Totals */}
+                <div className="bg-gray-50 p-4 rounded-xl space-y-2 text-sm mt-2">
+                  <div className="flex justify-between text-gray-500"><span>Subtotal</span> <span>₹{grossTotal}</span></div>
+                  {offerDiscountAmount > 0 && (
+                    <div className="flex justify-between text-green-600 font-medium">
+                      <span>Offer Discount</span>
+                      <span>-₹{offerDiscountAmount.toFixed(0)}</span>
+                    </div>
+                  )}
+                  {couponDiscount > 0 && (
+                    <div className="flex justify-between text-green-600 font-medium">
+                      <span>Coupon ({String(coupon.code || coupon.data?.code).toUpperCase()})</span>
+                      <span>-₹{couponDiscount.toFixed(0)}</span>
+                    </div>
+                  )}
+                  <div className="border-t border-gray-200 pt-3 flex justify-between items-center mt-2">
+                    <span className="font-bold text-gray-800 text-lg">Total Payable</span> 
+                    <span className="font-bold text-2xl text-blue-600">₹{finalTotal}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Ticket size={18} className="absolute left-3 top-3 text-gray-400" />
+                  <input 
+                    placeholder="Have a promo code?" 
+                    className="w-full pl-10 p-3 border border-gray-200 rounded-xl text-sm uppercase focus:ring-2 focus:ring-blue-500 outline-none font-bold tracking-wider"
+                    value={promoInput}
+                    onChange={e => setPromoInput(e.target.value)}
+                  />
+                </div>
+                <button onClick={applyPromo} className="text-sm font-bold text-blue-600 px-5 bg-blue-50 hover:bg-blue-100 rounded-xl border border-blue-100 transition-colors">
+                    Apply
+                </button>
+              </div>
+            </div>
+          )}
 
         </div>
 
-        {/* Sticky Footer (Mobile Only) */}
-        <div className="md:hidden fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-100 z-30 safe-area-pb">
-          <div className="flex items-center justify-between mb-3 px-1">
-             <div className="text-xs text-gray-500 font-medium">Total Amount</div>
-             <div className="text-lg font-bold text-gray-900">₹{finalTotal}</div>
+        {/* Fixed Bottom Footer (Action Bar) */}
+        <div className={`${isDesktop ? 'px-8 pb-8 border-t border-gray-100 rounded-b-3xl bg-white z-30' : 'absolute bottom-0 left-0 right-0 bg-white border-t border-gray-100 p-4 z-30 shadow-[0_-4px_20px_rgba(0,0,0,0.05)]'}`}>
+          <div className={`flex gap-4 ${isDesktop ? '' : 'max-w-4xl mx-auto'}`}>
+            <div className={`flex-1 ${isDesktop ? 'hidden' : ''}`}>
+                <div className="text-xs text-gray-500 font-medium uppercase tracking-wider">Total</div>
+                <div className="text-xl font-bold text-gray-900">₹{finalTotal}</div>
+            </div>
+            <button 
+              onClick={step === 4 ? onPlaceOrderAndPay : handleNext}
+              disabled={(step === 2 && !otp.verified)}
+              className={`flex-1 bg-gray-900 text-white py-4 rounded-xl font-bold shadow-lg hover:bg-black active:scale-[0.98] transition-all flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed text-lg ${isDesktop ? '' : 'md:w-full'}`}
+            >
+              {step === 4 ? (
+                  creating.status === 'loading' ? (
+                      <><Loader className="animate-spin" /> Processing...</>
+                  ) : `Pay ₹${finalTotal}`
+              ) : (
+                <>
+                  <span>Continue</span>
+                  <ArrowRight size={20} />
+                </>
+              )}
+            </button>
           </div>
-          <button 
-            onClick={step === 4 ? onPlaceOrderAndPay : handleNext}
-            disabled={(step === 2 && !otp.verified)}
-            className="w-full bg-gray-900 text-white py-3.5 rounded-xl font-bold shadow-lg hover:bg-black active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {step === 4 ? (creating.status === 'loading' ? 'Processing...' : `Pay Now`) : (
-              <>
-                <span>Continue</span>
-                <ArrowRight size={18} />
-              </>
-            )}
-          </button>
         </div>
 
       </div>
-    </div>
+    </>
   );
 }

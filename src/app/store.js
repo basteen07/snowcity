@@ -5,6 +5,7 @@ import bannersReducer from '../features/banners/bannersSlice';
 import attractionsReducer from '../features/attractions/attractionsSlice';
 import combosReducer from '../features/combos/combosSlice';
 import offersReducer from '../features/offers/offersSlice';
+import couponsReducer from '../features/coupons/couponsSlice';
 import pagesReducer from '../features/pages/pagesSlice';
 import blogsReducer from '../features/blogs/blogsSlice';
 import bookingsReducer from '../features/bookings/bookingsSlice';
@@ -90,6 +91,7 @@ export const store = configureStore({
     attractions: attractionsReducer,
     combos: combosReducer,
     offers: offersReducer,
+    coupons: couponsReducer,
     pages: pagesReducer,
     blogs: blogsReducer,
     bookings: bookingsReducer,

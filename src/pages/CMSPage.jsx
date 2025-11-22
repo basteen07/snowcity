@@ -36,17 +36,25 @@ export default function CMSPage() {
   const isRaw = mode === 'raw';
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-8">
-      <h1 className="text-2xl font-semibold mb-3">{title}</h1>
-      {isRaw ? (
-        <RawFrame title={title} html={p.raw_html || ''} css={p.raw_css || ''} js={p.raw_js || ''} />
-      ) : p.content_html ? (
-        <HtmlContent html={p.content_html} />
-      ) : p.content ? (
-        <HtmlContent html={p.content} />
-      ) : (
-        <p className="text-gray-600">No content available.</p>
-      )}
+    <div className="w-full px-4 py-10 md:py-14">
+      <div className="max-w-6xl mx-auto space-y-4">
+        <h1 className="text-3xl md:text-4xl font-semibold">{title}</h1>
+        {isRaw ? (
+          <RawFrame
+            title={title}
+            html={p.raw_html || ''}
+            css={p.raw_css || ''}
+            js={p.raw_js || ''}
+            className="w-full min-h-[70vh]"
+          />
+        ) : p.content_html ? (
+          <HtmlContent className="prose prose-lg max-w-none" html={p.content_html} />
+        ) : p.content ? (
+          <HtmlContent className="prose prose-lg max-w-none" html={p.content} />
+        ) : (
+          <p className="text-gray-600">No content available.</p>
+        )}
+      </div>
     </div>
   );
 }

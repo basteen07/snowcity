@@ -2,18 +2,56 @@ import React from 'react';
 import { Sparkles } from 'lucide-react';
 
 const defaultOffers = [
-  '🎉 WEDNESDAY SPECIAL: Get 20% OFF on all attractions',
-  '⚡ HAPPY HOURS: 2 PM - 4 PM - Buy 1 Get 1 Free',
-  '🎂 BIRTHDAY SPECIAL: Free entry for birthday child',
-  '👨‍👩‍👧‍👦 FAMILY PACK: 4 tickets at just ₹2999',
-  '📸 FREE PHOTO PACKAGE with Fast Pass',
-  '🍔 COMBO MEAL OFFER: Save ₹200 on food combos',
+  {
+    id: 'default-wed',
+    icon: '🎉',
+    label: 'Wednesday Special',
+    badge: '20% OFF',
+    description: 'All attractions the entire day'
+  },
+  {
+    id: 'default-happy',
+    icon: '⚡',
+    label: 'Happy Hours',
+    badge: 'BOGO',
+    description: '2PM-4PM buy 1 get 1 free'
+  },
+  {
+    id: 'default-birthday',
+    icon: '🎂',
+    label: 'Birthday Treat',
+    badge: 'Free Entry',
+    description: 'Birthday kid gets free access'
+  }
 ];
 
+const normalizePromo = (item, idx) => {
+  if (!item) return null;
+  if (typeof item === 'string') {
+    return {
+      id: `promo-string-${idx}`,
+      icon: '•',
+      label: item,
+      badge: null,
+      description: null
+    };
+  }
+  return {
+    id: item.id || `promo-${idx}`,
+    icon: item.icon || '•',
+    label: item.label || 'Special Offer',
+    badge: item.badge || null,
+    description: item.description || null
+  };
+};
+
 export default function OffersMarquee({ items }) {
-  const offers = React.useMemo(() => {
+  const promos = React.useMemo(() => {
     const src = Array.isArray(items) && items.length ? items : defaultOffers;
-    return [...src, ...src];
+    const mapped = src
+      .map((item, idx) => normalizePromo(item, idx))
+      .filter(Boolean);
+    return [...mapped, ...mapped];
   }, [items]);
 
   return (
@@ -25,14 +63,28 @@ export default function OffersMarquee({ items }) {
 
       <div className="relative flex overflow-hidden">
         <div className="flex whitespace-nowrap animate-offers-marquee">
-          {offers.map((offer, idx) => (
-            <span
-              key={`${offer}-${idx}`}
-              className="inline-flex items-center mx-8 text-slate-900 font-semibold text-sm sm:text-base"
+          {promos.map((promo, idx) => (
+            <div
+              key={`${promo.id}-${idx}`}
+              className="inline-flex items-center mx-6 px-4 py-2 bg-white/80 rounded-2xl shadow text-slate-900"
             >
-              <span className="text-xl mr-3">•</span>
-              {offer}
-            </span>
+              <span className="text-xl mr-3">{promo.icon}</span>
+              <div className="flex flex-col text-left">
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-sm sm:text-base">{promo.label}</span>
+                  {promo.badge ? (
+                    <span className="text-[11px] uppercase font-bold bg-amber-500/20 text-amber-900 px-2 py-0.5 rounded-full">
+                      {promo.badge}
+                    </span>
+                  ) : null}
+                </div>
+                {promo.description ? (
+                  <span className="text-xs text-slate-700/80 mt-0.5">
+                    {promo.description}
+                  </span>
+                ) : null}
+              </div>
+            </div>
           ))}
         </div>
       </div>

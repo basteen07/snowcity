@@ -4,6 +4,7 @@ import adminApi from '../../services/adminApi';
 import RawEditor from '../../components/common/RawEditor';
 import RichText from '../../components/common/RichText';
 import GalleryField from '../../components/common/GalleryField';
+import useCatalogTargets from '../../hooks/useCatalogTargets';
 
 const NAV_GROUPS = [
   { key: '', label: 'No nav' },
@@ -71,7 +72,16 @@ export default function PageForm() {
     setErr('');
     setSaving(true);
     try {
+      const normalizeId = (val) => {
+        const num = Number(val);
+        return Number.isFinite(num) ? num : null;
+      };
+
       const payload = { ...form };
+      payload.section_type = form.section_type || 'none';
+      payload.section_ref_id = payload.section_type === 'none' ? null : normalizeId(form.section_ref_id);
+      payload.placement_ref_id = form.placement === 'attraction_details' ? normalizeId(form.placement_ref_id) : null;
+      payload.nav_order = Number.isFinite(Number(form.nav_order)) ? Number(form.nav_order) : 0;
       if (payload.editor_mode === 'raw') {
         // Ensure raw fields present; content not needed
         payload.content = payload.content || '';
@@ -88,6 +98,16 @@ export default function PageForm() {
       setSaving(false);
     }
   };
+
+  const { attractions = [], combos = [], status: targetsStatus } = useCatalogTargets();
+  const attractionOptions = React.useMemo(
+    () => attractions.map((a) => ({ value: a.attraction_id || a.id, label: a.title || a.name || `Attraction #${a.attraction_id || a.id}` })),
+    [attractions]
+  );
+  const comboOptions = React.useMemo(
+    () => combos.map((c) => ({ value: c.combo_id || c.id, label: c.title || c.name || `Combo #${c.combo_id || c.id}` })),
+    [combos]
+  );
 
   const preview = async () => {
     try {
@@ -164,11 +184,51 @@ ${form.raw_html || ''}
         </div>
       </div>
 
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div>
+          <label className="block text-sm">Section type</label>
+          <select
+            className="w-full rounded-md border px-3 py-2 dark:bg-neutral-900 dark:border-neutral-700"
+            value={form.section_type || 'none'}
+            onChange={(e) => onChange({ section_type: e.target.value, section_ref_id: null })}
+          >
+            <option value="none">None</option>
+            <option value="attraction">Attraction</option>
+            <option value="combo">Combo</option>
+          </select>
+        </div>
+        {form.section_type && form.section_type !== 'none' ? (
+          <div className="md:col-span-2">
+            <label className="block text-sm">{form.section_type === 'attraction' ? 'Select attraction' : 'Select combo'}</label>
+            <select
+              className="w-full rounded-md border px-3 py-2 dark:bg-neutral-900 dark:border-neutral-700"
+              value={form.section_ref_id || ''}
+              onChange={(e) => onChange({ section_ref_id: e.target.value ? Number(e.target.value) : null })}
+              disabled={targetsStatus === 'loading'}
+            >
+              <option value="">{targetsStatus === 'loading' ? 'Loading…' : 'Choose option'}</option>
+              {(form.section_type === 'attraction' ? attractionOptions : comboOptions).map((opt) => (
+                <option key={`section-${opt.value}`} value={opt.value || ''}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
+        ) : null}
+      </div>
+
       {form.placement === 'attraction_details' ? (
         <div>
           <label className="block text-sm">Attraction (for placement)</label>
-          <input type="number" className="w-full rounded-md border px-3 py-2 dark:bg-neutral-900 dark:border-neutral-700"
-            value={form.placement_ref_id || ''} onChange={(e) => onChange({ placement_ref_id: Number(e.target.value) || null })} placeholder="Attraction ID" />
+          <select
+            className="w-full rounded-md border px-3 py-2 dark:bg-neutral-900 dark:border-neutral-700"
+            value={form.placement_ref_id || ''}
+            onChange={(e) => onChange({ placement_ref_id: e.target.value ? Number(e.target.value) : null })}
+            disabled={targetsStatus === 'loading'}
+          >
+            <option value="">{targetsStatus === 'loading' ? 'Loading…' : 'Select attraction'}</option>
+            {attractionOptions.map((opt) => (
+              <option key={`placement-${opt.value}`} value={opt.value || ''}>{opt.label}</option>
+            ))}
+          </select>
         </div>
       ) : null}
 

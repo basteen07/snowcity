@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import adminApi from '../../services/adminApi';
 import A from '../../services/adminEndpoints';
 import ImageUploader from '../../components/common/ImageUploader';
+import useCatalogTargets from '../../hooks/useCatalogTargets';
 
 export default function GalleryForm() {
   const { id } = useParams();
@@ -18,6 +19,8 @@ export default function GalleryForm() {
       title: '',
       description: '',
       active: true,
+      target_type: 'none',
+      target_ref_id: null,
     }
   });
 
@@ -37,6 +40,8 @@ export default function GalleryForm() {
             title: g.title || '',
             description: g.description || '',
             active: g.active !== undefined ? !!g.active : true,
+            target_type: g.target_type || 'none',
+            target_ref_id: g.target_ref_id || null,
           }
         }));
       } catch (err) {
@@ -47,12 +52,26 @@ export default function GalleryForm() {
 
   const onChange = (patch) => setState((s) => ({ ...s, form: { ...s.form, ...patch } }));
 
+  const { attractions = [], combos = [], status: targetStatus } = useCatalogTargets();
+  const targetOptions = React.useMemo(() => ({
+    attraction: attractions.map((a) => ({ value: a.attraction_id || a.id, label: a.title || a.name || `Attraction #${a.attraction_id || a.id}` })),
+    combo: combos.map((c) => ({ value: c.combo_id || c.id, label: c.title || c.name || `Combo #${c.combo_id || c.id}` })),
+  }), [attractions, combos]);
+
   const save = async (e) => {
     e.preventDefault();
     try {
-      const { media_type, url, title, description, active } = state.form;
+      const { media_type, url, title, description, active, target_type, target_ref_id } = state.form;
       if (!media_type || !url) throw new Error('Media type and URL are required');
-      const payload = { media_type, url, title, description, active };
+      const payload = {
+        media_type,
+        url,
+        title,
+        description,
+        active,
+        target_type,
+        target_ref_id: target_type === 'none' ? null : (target_ref_id || null),
+      };
       if (isEdit) await adminApi.put(A.galleryById(id), payload);
       else await adminApi.post(A.gallery(), payload);
       navigate('/admin/catalog/gallery');
@@ -125,6 +144,42 @@ export default function GalleryForm() {
             onChange={(e) => onChange({ description: e.target.value })}
           />
         </div>
+
+        <div>
+          <label className="block text-sm text-gray-600 dark:text-neutral-300 mb-1">Link to</label>
+          <select
+            className="w-full rounded-md border px-3 py-2 dark:bg-neutral-900 dark:border-neutral-700 dark:text-neutral-200"
+            value={f.target_type}
+            onChange={(e) => onChange({ target_type: e.target.value, target_ref_id: null })}
+          >
+            <option value="none">No specific page</option>
+            <option value="attraction">Attraction</option>
+            <option value="combo">Combo</option>
+          </select>
+        </div>
+
+        {f.target_type !== 'none' ? (
+          <div>
+            <label className="block text-sm text-gray-600 dark:text-neutral-300 mb-1">
+              {f.target_type === 'attraction' ? 'Select attraction' : 'Select combo'}
+            </label>
+            <select
+              className="w-full rounded-md border px-3 py-2 dark:bg-neutral-900 dark:border-neutral-700 dark:text-neutral-200"
+              value={f.target_ref_id || ''}
+              onChange={(e) => onChange({ target_ref_id: e.target.value ? Number(e.target.value) : null })}
+              disabled={targetStatus === 'loading'}
+            >
+              <option value="">
+                {targetStatus === 'loading' ? 'Loading…' : 'Select an option'}
+              </option>
+              {(targetOptions[f.target_type] || []).map((opt) => (
+                <option key={`${f.target_type}-${opt.value}`} value={opt.value || ''}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
 
         <div className="flex items-center gap-2 md:col-span-2">
           <input id="active" type="checkbox" checked={!!f.active} onChange={(e) => onChange({ active: e.target.checked })} />

@@ -1,7 +1,8 @@
 // src/components/cms/RawFrame.jsx
 import React from 'react';
+import clsx from 'clsx';
 
-export default function RawFrame({ title = 'page', html = '', css = '', js = '' }) {
+export default function RawFrame({ title = 'page', html = '', css = '', js = '', className = '', style }) {
   const srcDoc = React.useMemo(() => {
     return `
 <!doctype html>
@@ -22,8 +23,9 @@ ${html || ''}
   return (
     <iframe
       title={title}
-      className="w-full min-h-[60vh] rounded-md border"
+      className={clsx('w-full min-h-[60vh] border-0', className)}
       sandbox="allow-scripts allow-same-origin"
+      style={style}
       srcDoc={srcDoc}
     />
   );

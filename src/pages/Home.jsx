@@ -6,6 +6,7 @@ import { fetchBanners } from '../features/banners/bannersSlice';
 import { fetchAttractions } from '../features/attractions/attractionsSlice';
 import { fetchCombos } from '../features/combos/combosSlice';
 import { fetchOffers } from '../features/offers/offersSlice';
+import { fetchCoupons } from '../features/coupons/couponsSlice';
 import { fetchAddons } from '../features/addons/addonsSlice';
 import { fetchPages } from '../features/pages/pagesSlice';
 import { fetchBlogs } from '../features/blogs/blogsSlice';
@@ -59,6 +60,7 @@ export default function Home() {
   const attractions = useSelector((s) => s.attractions);
   const combos = useSelector((s) => s.combos);
   const offers = useSelector((s) => s.offers);
+  const coupons = useSelector((s) => s.coupons);
   const addons = useSelector((s) => s.addons);
   const pages = useSelector((s) => s.pages);
   const blogs = useSelector((s) => s.blogs);
@@ -76,6 +78,7 @@ export default function Home() {
     const id = onIdle(() => {
       if (combos.status === 'idle') dispatch(fetchCombos());
       if (offers.status === 'idle') dispatch(fetchOffers());
+      if (coupons.status === 'idle') dispatch(fetchCoupons({ active: true, limit: 100 }));
       if (addons.status === 'idle') dispatch(fetchAddons({ active: true, limit: 100 }));
       if (pages.status === 'idle') dispatch(fetchPages());
       if (blogs.status === 'idle') dispatch(fetchBlogs());
@@ -99,6 +102,9 @@ export default function Home() {
     if (offers.items?.length) saveCache({ offers: offers.items });
   }, [offers.items]);
   React.useEffect(() => {
+    if (coupons.items?.length) saveCache({ coupons: coupons.items });
+  }, [coupons.items]);
+  React.useEffect(() => {
     if (addons.items?.length) saveCache({ addons: addons.items });
   }, [addons.items]);
   React.useEffect(() => {
@@ -116,6 +122,7 @@ export default function Home() {
   const attractionItems = attractions.items?.length ? attractions.items : cacheRef.current.attractions || [];
   const comboItems = combos.items?.length ? combos.items : cacheRef.current.combos || [];
   const offerItems = offers.items?.length ? offers.items : cacheRef.current.offers || [];
+  const couponItems = coupons.items?.length ? coupons.items : cacheRef.current.coupons || [];
   const addonItems = addons.items?.length ? addons.items : cacheRef.current.addons || [];
   const pageItems = pages.items?.length ? pages.items : cacheRef.current.pages || [];
   const blogItems = blogs.items?.length ? blogs.items : cacheRef.current.blogs || [];
@@ -131,15 +138,39 @@ export default function Home() {
   const previewGalleryItems = React.useMemo(() => galleryPhotoItems.slice(0, 6), [galleryPhotoItems]);
 
   const marqueeItems = React.useMemo(() => {
-    if (!offerItems?.length) return [];
-    return offerItems.map((offer, idx) => {
-      const label = offer.name || offer.title || `Offer`;
-      const discount = offer.discount_percent || offer.discountPercent;
-      const short = offer.short_description || offer.subtitle || offer.description || '';
-      const value = discount ? `Save ${discount}%` : offer.discount_value ? `Flat ₹${offer.discount_value} off` : '';
-      return [label, value, short].filter(Boolean).join(' • ');
-    });
-  }, [offerItems]);
+    const entries = [];
+    if (offerItems?.length) {
+      offerItems.forEach((offer) => {
+        const label = offer.name || offer.title || `Offer`;
+        const discount = offer.discount_percent || offer.discountPercent;
+        const short = offer.short_description || offer.subtitle || offer.description || '';
+        const value = discount ? `Save ${discount}%` : offer.discount_value ? `Flat ₹${offer.discount_value} off` : '';
+        entries.push([label, value, short].filter(Boolean).join(' • '));
+      });
+    }
+    if (couponItems?.length) {
+      couponItems.forEach((coupon) => {
+        const code = (coupon.code || '').toString().toUpperCase();
+        const type = String(coupon.type || '').toLowerCase();
+        const value = Number(coupon.value || 0);
+        const minAmount = Number(coupon.min_amount || coupon.minAmount || 0);
+        const desc = coupon.description || '';
+        const discountLabel = type === 'percent' && value > 0
+          ? `Save ${value}%`
+          : value > 0
+          ? `Flat ₹${value} off`
+          : '';
+        const minText = minAmount > 0 ? `Min spend ₹${minAmount}` : '';
+        entries.push([
+          code ? `Coupon ${code}` : 'Coupon',
+          discountLabel,
+          minText,
+          desc
+        ].filter(Boolean).join(' • '));
+      });
+    }
+    return entries;
+  }, [offerItems, couponItems]);
 
   // brand gradient colors
   const arcticTop = "#0b1a33";      // deep arctic blue

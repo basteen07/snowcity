@@ -7,14 +7,14 @@ const planItems = [
   {
     icon: Clock,
     title: 'Park Timings',
-    description: 'Open daily • 10:00 AM – 8:00 PM',
-    href: '/page/park-timings'
+    description: '10:15 am to 8:00 pm | Every day',
+    href: '/page/Visitors%20Info'
   },
   {
     icon: MapPin,
     title: 'Getting There',
     description: 'Easy metro & bus connectivity',
-    href: '/page/getting-there'
+    href: '/page/location'
   },
   {
     icon: Shield,

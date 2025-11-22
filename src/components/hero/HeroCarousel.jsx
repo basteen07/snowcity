@@ -80,7 +80,16 @@ export default function HeroCarousel({ banners = [], waveColor = "#0b1a33" }) {
           const title = b?.title || b?.name || "";
           const subtitle = b?.subtitle || b?.description || b?.caption || "";
           const href = deriveHref(b);
+          const highlight = b?.tagline || b?.label || b?.category || "Everlasting Winter";
+          const ctaText = b?.cta_text || "Book Your Snow Day";
           const uniqueKey = b?.banner_id ?? b?.id ?? b?.uuid ?? b?.slug ?? idx;
+          const ticketButton = {
+            label: ctaText,
+            sub: b?.cta_subtitle || "Skip the queue & reserve",
+            href: href || "/booking",
+            accent: "from-amber-200 via-yellow-300 to-white",
+            textClass: "text-slate-900",
+          };
 
           return (
             <SwiperSlide key={uniqueKey}>
@@ -91,7 +100,7 @@ export default function HeroCarousel({ banners = [], waveColor = "#0b1a33" }) {
                     <img
                       src={desktopImg}
                       alt={title || "Banner"}
-                      className="w-full h-full object-cover object-center will-change-transform animate-kenburns"
+                      className="w-full h-full object-cover object-center will-change-transform animate-kenburns brightness-[1.12] contrast-[1.18] saturate-125"
                       loading={idx === 0 ? "eager" : "lazy"}
                       fetchPriority={idx === 0 ? "high" : "auto"}
                       decoding="async"
@@ -100,30 +109,43 @@ export default function HeroCarousel({ banners = [], waveColor = "#0b1a33" }) {
                   </picture>
                 </div>
 
-                <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/30 to-black/80" />
+                <div className="absolute inset-0 bg-gradient-to-br from-[#020617]/85 via-[#0f172a]/45 to-transparent mix-blend-screen" />
+                <div className="absolute inset-0 bg-gradient-to-t from-[#0f172a]/80 via-transparent to-transparent" />
 
                 <div
-                  className="absolute inset-0 flex flex-col items-center justify-center text-center px-4 sm:px-8 z-10 gap-4"
+                  className="absolute inset-0 flex flex-col justify-center px-4 sm:px-10 z-10 text-left"
                   data-swiper-parallax="-200"
                 >
-                  {title ? (
-                    <h2 className="text-yellow-300 text-3xl sm:text-4xl md:text-5xl font-black tracking-tight drop-shadow-xl animate-fade-title">
-                      {title}
-                    </h2>
-                  ) : null}
-                  {subtitle ? (
-                    <p className="text-white/90 text-lg md:text-2xl max-w-3xl animate-fade-sub">{subtitle}</p>
-                  ) : null}
+                  <div className="max-w-4xl space-y-4">
+                    <span className="text-xs sm:text-sm font-semibold tracking-[0.35em] uppercase text-white/75">
+                      {highlight}
+                    </span>
+                    {title ? (
+                      <h2 className="text-white text-3xl sm:text-5xl font-black leading-tight drop-shadow-[0_15px_35px_rgba(0,0,0,0.6)]">
+                        {title}
+                      </h2>
+                    ) : null}
+                    {subtitle ? (
+                      <p className="text-white/80 text-base md:text-xl max-w-2xl">
+                        {subtitle}
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
 
-                  {href ? (
-                    <a
-                      href={href}
-                      className="inline-flex items-center gap-2 mt-4 px-6 py-3 rounded-full border border-white/40 bg-white/10 text-white text-sm md:text-base font-semibold hover:bg-white/20 transition-all backdrop-blur-lg shadow-[0_8px_30px_rgba(0,0,0,0.35)]"
-                    >
-                      Explore Now
-                      <span aria-hidden="true">→</span>
-                    </a>
-                  ) : null}
+                <div className="absolute right-4 sm:right-10 bottom-8 sm:bottom-12 z-10" data-swiper-parallax="-350">
+                  <a
+                    key={`${uniqueKey}-ticket-primary`}
+                    href={ticketButton.href}
+                    className="book-ticket-btn"
+                  >
+                    <img
+                      src="https://cdn-icons-png.flaticon.com/512/9068/9068678.png"
+                      alt="ticket"
+                      className="w-8 h-8"
+                    />
+                    <span>{ticketButton.label}</span>
+                  </a>
                 </div>
 
                 {href ? (
@@ -153,6 +175,35 @@ export default function HeroCarousel({ banners = [], waveColor = "#0b1a33" }) {
         @keyframes fadeIn {
           from { opacity: 0; transform: translateY(16px); }
           to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes floatTicket {
+          0% { transform: translateY(0); }
+          50% { transform: translateY(-6px); }
+          100% { transform: translateY(0); }
+        }
+        .book-ticket-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.4rem;
+          background: linear-gradient(135deg, #ff48dc, #b23bff);
+          color: #fff;
+          padding: 0.65rem 1.1rem;
+          border-radius: 999px;
+          font-size: 0.9rem;
+          font-weight: 700;
+          box-shadow: 0 6px 16px rgba(178, 59, 255, 0.6);
+          transition: all 0.25s ease;
+          animation: floatTicket 3s ease-in-out infinite;
+        }
+        .book-ticket-btn img {
+          filter: drop-shadow(0 3px 4px rgba(0,0,0,0.2));
+        }
+        .book-ticket-btn:hover {
+          transform: scale(1.08) translateY(-3px);
+          box-shadow: 0 10px 22px rgba(178, 59, 255, 0.7);
+        }
+        .book-ticket-btn:active {
+          transform: scale(0.96);
         }
       `}</style>
     </section>

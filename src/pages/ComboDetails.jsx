@@ -122,6 +122,7 @@ export default function ComboDetails() {
   }, [matchedCombo, numericParam]);
 
   const [state, setState] = React.useState({ status: 'idle', data: null, error: null });
+  const [linkedGallery, setLinkedGallery] = React.useState({ status: 'idle', items: [], error: null });
 
   React.useEffect(() => {
     if (!rawParam) {
@@ -194,6 +195,28 @@ export default function ComboDetails() {
   React.useEffect(() => {
     if (fetchId && date) loadSlots();
   }, [fetchId, date, loadSlots]);
+
+  React.useEffect(() => {
+    if (!fetchId) return undefined;
+    let canceled = false;
+    setLinkedGallery((s) => ({ ...s, status: 'loading', error: null }));
+    (async () => {
+      try {
+        const res = await api.get(endpoints.gallery.list(), {
+          params: { active: true, target_type: 'combo', target_ref_id: fetchId, limit: 12 }
+        });
+        if (canceled) return;
+        const items = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
+        setLinkedGallery({ status: 'succeeded', items, error: null });
+      } catch (err) {
+        if (canceled) return;
+        setLinkedGallery({ status: 'failed', items: [], error: err?.message || 'Failed to load gallery' });
+      }
+    })();
+    return () => {
+      canceled = true;
+    };
+  }, [fetchId]);
 
   if (state.status === 'loading' && !state.data) {
     return (
@@ -363,6 +386,43 @@ export default function ComboDetails() {
             <div className="prose max-w-none">
               <h2>About this combo</h2>
               <div dangerouslySetInnerHTML={{ __html: description }} />
+            </div>
+          ) : null}
+
+          {linkedGallery.status === 'loading' && !linkedGallery.items.length ? (
+            <Loader />
+          ) : null}
+          {linkedGallery.status === 'failed' ? (
+            <ErrorState message={linkedGallery.error} onRetry={() => setLinkedGallery((s) => ({ ...s, status: 'idle' }))} />
+          ) : null}
+          {linkedGallery.items.length ? (
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-xl font-semibold">Gallery</h2>
+                <span className="text-sm text-gray-500">#{linkedGallery.items[0]?.target_name || title}</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                {linkedGallery.items.map((item) => {
+                  const isVideo = String(item.media_type || '').toLowerCase() === 'video';
+                  const mediaUrl = isVideo ? item.url : imgSrc(item);
+                  if (!mediaUrl) return null;
+                  return (
+                    <figure key={`combo-gallery-${item.gallery_item_id}`} className="relative rounded-xl overflow-hidden border shadow-sm bg-white">
+                      {isVideo ? (
+                        <video className="w-full h-48 object-cover" src={mediaUrl} controls preload="metadata" poster={imgSrc(item.thumbnail)} />
+                      ) : (
+                        <img src={mediaUrl} alt={item.title || title} className="w-full h-48 object-cover" loading="lazy" />
+                      )}
+                      {(item.title || item.description) ? (
+                        <figcaption className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-3 text-xs text-white">
+                          {item.title ? <div className="font-medium text-sm">{item.title}</div> : null}
+                          {item.description ? <div className="opacity-80 mt-1">{item.description}</div> : null}
+                        </figcaption>
+                      ) : null}
+                    </figure>
+                  );
+                })}
+              </div>
             </div>
           ) : null}
 

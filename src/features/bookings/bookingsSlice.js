@@ -160,7 +160,7 @@ const createInitialState = () => ({
     error: null
   },
 
-  coupon: { code: '', discount: 0, data: null, status: 'idle', error: null },
+  coupon: { code: '', discount: 0, data: null, status: 'idle', error: null, reason: null },
 
   creating: { status: 'idle', booking: null, booking_id: null, order_id: null, booking_ref: null, error: null },
 
@@ -346,11 +346,14 @@ const bookingsSlice = createSlice({
     setContact(state, action) { state.contact = { ...state.contact, ...(action.payload || {}) }; },
     resetBookingFlow: () => createInitialState(),
     setCouponCode(state, action) {
-      state.coupon.code = (action.payload || '').trim();
+      const nextCode = (action.payload || '').trim();
+      if (state.coupon.code === nextCode) return;
+      state.coupon.code = nextCode;
       state.coupon.discount = 0;
       state.coupon.data = null;
       state.coupon.status = 'idle';
       state.coupon.error = null;
+      state.coupon.reason = null;
     },
     addCartItem(state, action) {
       const payload = action.payload || {};
@@ -454,9 +457,24 @@ const bookingsSlice = createSlice({
     });
 
     // Coupon
-    b.addCase(applyCoupon.pending, (s) => { s.coupon.status = 'loading'; s.coupon.error = null; s.coupon.discount = 0; s.coupon.data = null; });
-    b.addCase(applyCoupon.fulfilled, (s, a) => { s.coupon.status = 'succeeded'; s.coupon.discount = Number(a.payload?.discount || 0); s.coupon.data = a.payload?.coupon || null; });
-    b.addCase(applyCoupon.rejected, (s, a) => { s.coupon.status = 'failed'; s.coupon.error = toErr(a.payload || a.error, 'Failed to apply coupon'); });
+    b.addCase(applyCoupon.pending, (s) => {
+      s.coupon.status = 'loading';
+      s.coupon.error = null;
+      s.coupon.discount = 0;
+      s.coupon.data = null;
+      s.coupon.reason = null;
+    });
+    b.addCase(applyCoupon.fulfilled, (s, a) => {
+      s.coupon.status = 'succeeded';
+      s.coupon.discount = Number(a.payload?.discount || 0);
+      s.coupon.data = a.payload?.coupon || null;
+      s.coupon.reason = a.payload?.reason || null;
+    });
+    b.addCase(applyCoupon.rejected, (s, a) => {
+      s.coupon.status = 'failed';
+      s.coupon.error = toErr(a.payload || a.error, 'Failed to apply coupon');
+      s.coupon.reason = null;
+    });
 
     // Create booking
     b.addCase(createBooking.pending, (s) => {

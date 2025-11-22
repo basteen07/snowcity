@@ -55,6 +55,9 @@ export function encodeSeg(id) {
 }
 
 const endpoints = {
+  chatbot: {
+    chat: () => '/api/chatbot',
+  },
   // Health & Utilities
   health: {
     health: () => '/health',
@@ -107,6 +110,7 @@ const endpoints = {
     slots: (id) => `/api/combos/${encodeSeg(id)}/slots`
   },
   coupons: {
+    list: () => '/api/coupons',
     byCode: (code) => `/api/coupons/${encodeSeg(code)}`, // GET
     apply: () => '/api/coupons/apply' // POST
   },

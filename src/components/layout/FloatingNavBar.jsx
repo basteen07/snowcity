@@ -7,6 +7,15 @@ import endpoints from "../../services/endpoints";
 import { getAttrId } from "../../utils/ids";
 import Logo from "../../assets/images/Logo.webp";
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const COUNTRY_CODES = [
+  { code: "+91", label: "India (+91)" },
+  { code: "+1", label: "USA (+1)" },
+  { code: "+971", label: "UAE (+971)" },
+  { code: "+44", label: "UK (+44)" },
+  { code: "+65", label: "Singapore (+65)" },
+];
+
 /* ---------------- HOOKS ---------------- */
 
 function useClickOutside(ref, onOutside) {
@@ -80,12 +89,18 @@ export default function FloatingNavBar() {
   const pages = useSelector((s) => s.pages.items || []);
   const user = useSelector((s) => s.auth?.user);
   const token = useSelector((s) => s.auth?.token);
+  const userName = (user?.name || user?.full_name || user?.email || 'Guest').trim();
+  const userEmail = user?.email || 'Not provided';
+  const userPhone = user?.phone || user?.mobile || 'Not provided';
 
   const [menuOpen, setMenuOpen] = React.useState(null);
   const [mobileOpen, setMobileOpen] = React.useState(false);
   const [profileOpen, setProfileOpen] = React.useState(false);
   const [authModalOpen, setAuthModalOpen] = React.useState(false);
   const [authForm, setAuthForm] = React.useState({ name: "", email: "", phone: "" });
+  const [authCountryCode, setAuthCountryCode] = React.useState("+91");
+  const [authPhoneLocal, setAuthPhoneLocal] = React.useState("");
+  const [authErrors, setAuthErrors] = React.useState({});
   const [authOtp, setAuthOtp] = React.useState({ sent: false, code: "", userId: null, debug: "", status: "idle", error: null });
 
   const initial = (user?.name || user?.email || "U").trim().charAt(0).toUpperCase();
@@ -115,8 +130,27 @@ export default function FloatingNavBar() {
   // Prevent background scroll when mobile menu is open
   useLockBodyScroll(mobileOpen || authModalOpen);
 
+  const navLinkBase = "px-3 py-2 rounded-full text-sm font-semibold tracking-wide transition-colors duration-200";
+  const navLinkTone = transparent
+    ? "text-white drop-shadow-[0_2px_14px_rgba(255,255,255,0.75)] hover:bg-white/15 hover:text-white"
+    : "text-slate-800 hover:bg-slate-100";
+  const navLinkClass = `${navLinkBase} ${navLinkTone}`;
+
+  const signInButtonClass = transparent
+    ? "inline-flex items-center rounded-full border border-white/70 px-4 py-2 text-white font-semibold shadow-[0_10px_30px_rgba(255,255,255,0.35)] hover:bg-white/15"
+    : "inline-flex items-center rounded-full border border-blue-600 px-4 py-2 text-blue-600 font-semibold hover:bg-blue-50";
+
+  const bookTicketButtonClass = `inline-flex items-center rounded-full px-5 py-2.5 text-sm font-semibold shadow-lg transition ${
+    transparent
+      ? 'bg-white text-slate-900 hover:bg-amber-50 shadow-[0_18px_45px_rgba(255,255,255,0.45)]'
+      : 'bg-gray-900 text-white hover:bg-black'
+  }`;
+
   const resetAuthState = React.useCallback(() => {
     setAuthForm({ name: "", email: "", phone: "" });
+    setAuthCountryCode("+91");
+    setAuthPhoneLocal("");
+    setAuthErrors({});
     setAuthOtp({ sent: false, code: "", userId: null, debug: "", status: "idle", error: null });
   }, []);
 
@@ -132,19 +166,38 @@ export default function FloatingNavBar() {
 
   const normalizePhone = (s = "") => s.replace(/[^\d+]/g, "");
 
+  const combinedNavPhone = React.useMemo(() => {
+    if (!authPhoneLocal) return "";
+    return `${authCountryCode}${authPhoneLocal}`;
+  }, [authCountryCode, authPhoneLocal]);
+
+  const handleAuthPhoneChange = React.useCallback((value) => {
+    const digits = value.replace(/\D/g, "").slice(0, 10);
+    setAuthPhoneLocal(digits);
+    setAuthErrors((prev) => ({ ...prev, phone: undefined }));
+  }, []);
+
   const sendNavOtp = React.useCallback(async () => {
     const name = authForm.name.trim() || "Guest";
     const email = authForm.email.trim();
-    const phone = normalizePhone(authForm.phone);
-    if (!email && !phone) {
-      setAuthOtp((prev) => ({ ...prev, error: "Enter email or phone" }));
+    const errors = {};
+    if (!EMAIL_REGEX.test(email)) {
+      errors.email = "Enter a valid email";
+    }
+    if (authPhoneLocal.length !== 10) {
+      errors.phone = "Enter 10 digit mobile number";
+    }
+    if (Object.keys(errors).length) {
+      setAuthErrors(errors);
+      setAuthOtp((prev) => ({ ...prev, error: null }));
       return;
     }
+    const phone = normalizePhone(combinedNavPhone);
     try {
       setAuthOtp((prev) => ({ ...prev, status: "sending", error: null }));
       const payload = {
         name,
-        channel: phone ? "sms" : "email",
+        channel: "sms",
         createIfNotExists: true,
       };
       if (email) payload.email = email;
@@ -174,7 +227,7 @@ export default function FloatingNavBar() {
       const payload = { otp: code };
       if (authOtp.userId) payload.user_id = authOtp.userId;
       const email = authForm.email.trim();
-      const phone = normalizePhone(authForm.phone);
+      const phone = normalizePhone(combinedNavPhone);
       if (!authOtp.userId) {
         if (email) payload.email = email;
         if (phone) payload.phone = phone;
@@ -191,11 +244,113 @@ export default function FloatingNavBar() {
     }
   }, [authOtp, authForm, closeAuthModal, dispatch]);
 
+  const authModal = authModalOpen ? (
+    <div className="fixed inset-0 z-[130] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50" onClick={closeAuthModal} />
+      <div className="relative bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 z-[140] max-h-[calc(100vh-4rem)] overflow-y-auto">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-gray-900">Sign in to SnowCity</h3>
+          <button className="p-2 rounded-full bg-gray-100 text-gray-500" onClick={closeAuthModal}>
+            ✕
+          </button>
+        </div>
+        <p className="text-sm text-gray-500 mb-4">
+          Enter your details once. We&apos;ll create or find your profile and send an OTP (testing code 123456).
+        </p>
+        <div className="space-y-3">
+          <input
+            className="w-full p-3 rounded-xl border border-gray-200 focus:border-blue-500 outline-none"
+            placeholder="Full Name"
+            value={authForm.name}
+            onChange={(e) => setAuthForm((prev) => ({ ...prev, name: e.target.value }))}
+          />
+          <input
+            className={`w-full p-3 rounded-xl border focus:border-blue-500 outline-none ${
+              authErrors?.email ? "border-red-300" : "border-gray-200"
+            }`}
+            placeholder="Email"
+            type="email"
+            value={authForm.email}
+            onChange={(e) => {
+              setAuthForm((prev) => ({ ...prev, email: e.target.value }));
+              if (authErrors.email) setAuthErrors((prev) => ({ ...prev, email: undefined }));
+            }}
+          />
+          {authErrors.email && (
+            <p className="text-xs text-red-500">{authErrors.email}</p>
+          )}
+          <div className="flex gap-3">
+            <div className="relative w-32">
+              <select
+                className="w-full pl-3 pr-8 p-3 rounded-xl bg-gray-50 border border-gray-200 focus:border-blue-500 outline-none appearance-none text-sm font-medium"
+                value={authCountryCode}
+                onChange={(e) => setAuthCountryCode(e.target.value)}
+              >
+                {COUNTRY_CODES.map((c) => (
+                  <option key={c.code} value={c.code}>
+                    {c.code}
+                  </option>
+                ))}
+              </select>
+              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-500">▾</span>
+            </div>
+            <input
+              className={`flex-1 p-3 rounded-xl border focus:border-blue-500 outline-none tracking-wide ${
+                authErrors?.phone ? "border-red-300" : "border-gray-200"
+              }`}
+              placeholder="98765 43210"
+              type="tel"
+              maxLength={10}
+              value={authPhoneLocal}
+              onChange={(e) => handleAuthPhoneChange(e.target.value)}
+            />
+          </div>
+          {authErrors.phone && <p className="text-xs text-red-500">{authErrors.phone}</p>}
+          <button
+            className="w-full py-3 rounded-xl bg-gray-900 text-white font-semibold hover:bg-black disabled:opacity-60"
+            onClick={sendNavOtp}
+            disabled={authOtp.status === "sending"}
+          >
+            {authOtp.status === "sending" ? "Sending..." : authOtp.sent ? "Resend OTP" : "Send OTP"}
+          </button>
+          {authOtp.sent && (
+            <div className="flex gap-3 items-center">
+              <input
+                className="flex-1 p-3 rounded-xl border border-blue-200 focus:border-blue-500 outline-none text-center tracking-widest font-mono"
+                maxLength={6}
+                value={authOtp.code}
+                onChange={(e) => setAuthOtp((prev) => ({ ...prev, code: e.target.value }))}
+              />
+              <button
+                className="px-5 py-3 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700"
+                onClick={verifyNavOtp}
+                disabled={authOtp.status === "verifying"}
+              >
+                {authOtp.status === "verifying" ? "Verifying..." : "Verify"}
+              </button>
+            </div>
+          )}
+          {authOtp.debug && (
+            <div className="text-xs text-green-700 bg-green-50 border border-green-100 rounded-xl p-2">
+              Testing OTP: <span className="font-mono font-semibold">{authOtp.debug}</span>
+            </div>
+          )}
+          {authOtp.error && (
+            <div className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-xl p-2">
+              {authOtp.error}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  ) : null;
+
   return (
-    <nav
-      ref={navRef}
-      className="fixed top-4 left-1/2 -translate-x-1/2 w-[94%] max-w-[1400px] z-[120] transition-all duration-300"
-    >
+    <>
+      <nav
+        ref={navRef}
+        className="fixed top-4 left-1/2 -translate-x-1/2 w-[94%] max-w-[1400px] z-[120] transition-all duration-300"
+      >
       {/* ------------------- DESKTOP NAV -------------------- */}
       <div
         className={`hidden md:flex items-center justify-between gap-6 px-8 py-4 border rounded-[30px] shadow-2xl transition-all duration-300 ${
@@ -215,14 +370,14 @@ export default function FloatingNavBar() {
 
         {/* MENU ITEMS */}
         <div className="flex items-center gap-3 text-sm font-medium">
-          <Link to="/" className="px-3 py-2 rounded-full hover:bg-white/20">
+          <Link to="/" className={navLinkClass}>
             Home
           </Link>
 
           {/* Attractions */}
           <div className="relative">
             <button
-              className="px-3 py-2 rounded-full hover:bg-white/20"
+              className={navLinkClass}
               onClick={() => toggleMenu("attr")}
             >
               Attractions ▾
@@ -259,7 +414,7 @@ export default function FloatingNavBar() {
           {/* Offers */}
           <div className="relative">
             <button
-              className="px-3 py-2 rounded-full hover:bg-white/20"
+              className={navLinkClass}
               onClick={() => toggleMenu("offers")}
             >
               Offers ▾
@@ -287,7 +442,7 @@ export default function FloatingNavBar() {
           {/* Visitor Guide */}
           <div className="relative">
             <button
-              className="px-3 py-2 rounded-full hover:bg-white/20"
+              className={navLinkClass}
               onClick={() => toggleMenu("guide")}
             >
               Visitor Guide ▾
@@ -308,25 +463,23 @@ export default function FloatingNavBar() {
             )}
           </div>
 
-          <Link to="/contact" className="px-3 py-2 rounded-full hover:bg-white/20">
+          <Link to="/contact" className={navLinkClass}>
             Contact Us
           </Link>
-          <Link to="/blogs" className="px-3 py-2 rounded-full hover:bg-white/20">
+          <Link to="/blogs" className={navLinkClass}>
             Blogs
           </Link>
 
           {!token && (
             <button
-              className="inline-flex items-center rounded-full border border-blue-600 px-4 py-2 text-blue-600 hover:bg-blue-50"
+              className={signInButtonClass}
               onClick={openAuthModal}
             >
               🔐 Sign In
             </button>
           )}
           <button
-            className={`inline-flex items-center rounded-full px-5 py-2.5 text-sm font-semibold shadow-lg transition ${
-              token ? "bg-blue-600 hover:bg-blue-500" : "bg-gray-900 hover:bg-black"
-            }`}
+            className={bookTicketButtonClass}
             onClick={() => navigate("/booking")}
           >
             🎟️ Book Tickets
@@ -336,7 +489,7 @@ export default function FloatingNavBar() {
             <div className="relative">
               <button
                 className={`h-9 w-9 rounded-full flex items-center justify-center text-sm font-semibold transition ${
-                  transparent ? "bg-white/20 text-white" : "bg-gray-900 text-white"
+                  transparent ? "bg-white/25 text-white shadow-[0_8px_24px_rgba(255,255,255,0.35)]" : "bg-gray-900 text-white"
                 }`}
                 onClick={() => setProfileOpen((v) => !v)}
               >
@@ -352,6 +505,12 @@ export default function FloatingNavBar() {
                   >
                     My Bookings
                   </Link>
+                  <div className="px-3 py-2 rounded-md bg-gray-50 border border-gray-100 text-xs text-gray-600">
+                    <p className="font-semibold text-gray-700 text-sm mb-1">Settings</p>
+                    <p className="leading-tight"><span className="font-medium">Name:</span> {userName || 'Guest'}</p>
+                    <p className="leading-tight"><span className="font-medium">Phone:</span> {userPhone}</p>
+                    <p className="leading-tight"><span className="font-medium">Email:</span> {userEmail}</p>
+                  </div>
 
                   <button
                     className="w-full px-3 py-2 text-red-600 hover:bg-gray-100 rounded-md text-sm"
@@ -401,7 +560,7 @@ export default function FloatingNavBar() {
             <>
               <button
                 className={`h-9 w-9 rounded-full transition ${
-                  transparent ? "bg-white/20 text-white" : "bg-gray-900 text-white"
+                  transparent ? "bg-white/25 text-white shadow-[0_8px_24px_rgba(255,255,255,0.35)]" : "bg-gray-900 text-white"
                 }`}
                 onClick={() => setProfileOpen((v) => !v)}
                 aria-expanded={profileOpen}
@@ -422,6 +581,12 @@ export default function FloatingNavBar() {
                   >
                     My Bookings
                   </Link>
+                  <div className="px-3 py-2 mt-1 rounded-md bg-gray-50 border border-gray-100 text-xs text-gray-600">
+                    <p className="font-semibold text-gray-700 text-sm mb-1">Settings</p>
+                    <p className="leading-tight"><span className="font-medium">Name:</span> {userName || 'Guest'}</p>
+                    <p className="leading-tight"><span className="font-medium">Phone:</span> {userPhone}</p>
+                    <p className="leading-tight"><span className="font-medium">Email:</span> {userEmail}</p>
+                  </div>
 
                   <button
                     className="w-full px-3 py-2 text-red-600 hover:bg-gray-100 text-sm rounded-md"
@@ -539,78 +704,8 @@ export default function FloatingNavBar() {
         </div>
       )}
 
-      {authModalOpen && (
-        <div className="fixed inset-0 z-[130] flex items-center justify-center px-4 py-8 sm:py-12">
-          <div className="absolute inset-0 bg-black/50" onClick={closeAuthModal} />
-          <div className="relative bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 z-[140] max-h-[calc(100vh-4rem)] overflow-y-auto">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">Sign in to SnowCity</h3>
-              <button className="p-2 rounded-full bg-gray-100 text-gray-500" onClick={closeAuthModal}>
-                ✕
-              </button>
-            </div>
-            <p className="text-sm text-gray-500 mb-4">
-              Enter your details once. We&apos;ll create or find your profile and send an OTP (testing code 123456).
-            </p>
-            <div className="space-y-3">
-              <input
-                className="w-full p-3 rounded-xl border border-gray-200 focus:border-blue-500 outline-none"
-                placeholder="Full Name"
-                value={authForm.name}
-                onChange={(e) => setAuthForm((prev) => ({ ...prev, name: e.target.value }))}
-              />
-              <input
-                className="w-full p-3 rounded-xl border border-gray-200 focus:border-blue-500 outline-none"
-                placeholder="Email"
-                type="email"
-                value={authForm.email}
-                onChange={(e) => setAuthForm((prev) => ({ ...prev, email: e.target.value }))}
-              />
-              <input
-                className="w-full p-3 rounded-xl border border-gray-200 focus:border-blue-500 outline-none"
-                placeholder="Mobile"
-                type="tel"
-                value={authForm.phone}
-                onChange={(e) => setAuthForm((prev) => ({ ...prev, phone: e.target.value }))}
-              />
-              <button
-                className="w-full py-3 rounded-xl bg-gray-900 text-white font-semibold hover:bg-black disabled:opacity-60"
-                onClick={sendNavOtp}
-                disabled={authOtp.status === "sending"}
-              >
-                {authOtp.status === "sending" ? "Sending..." : authOtp.sent ? "Resend OTP" : "Send OTP"}
-              </button>
-              {authOtp.sent && (
-                <div className="flex gap-3 items-center">
-                  <input
-                    className="flex-1 p-3 rounded-xl border border-blue-200 focus:border-blue-500 outline-none text-center tracking-widest font-mono"
-                    maxLength={6}
-                    value={authOtp.code}
-                    onChange={(e) => setAuthOtp((prev) => ({ ...prev, code: e.target.value }))}
-                  />
-                  <button
-                    className="px-5 py-3 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700"
-                    onClick={verifyNavOtp}
-                    disabled={authOtp.status === "verifying"}
-                  >
-                    {authOtp.status === "verifying" ? "Verifying..." : "Verify"}
-                  </button>
-                </div>
-              )}
-              {authOtp.debug && (
-                <div className="text-xs text-green-700 bg-green-50 border border-green-100 rounded-xl p-2">
-                  Testing OTP: <span className="font-mono font-semibold">{authOtp.debug}</span>
-                </div>
-              )}
-              {authOtp.error && (
-                <div className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-xl p-2">
-                  {authOtp.error}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-    </nav>
+      </nav>
+      {authModal}
+    </>
   );
 }
